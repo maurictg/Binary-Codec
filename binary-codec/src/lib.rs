@@ -16,10 +16,6 @@ pub enum DeserializationError {
     UnknownDiscriminant(u8)
 }
 
-pub struct SerializationConfig {
-    pub strict_mode: bool
-}
-
 mod tests;
 pub mod serializers;
 pub mod encodings;

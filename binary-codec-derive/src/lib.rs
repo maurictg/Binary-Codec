@@ -178,7 +178,7 @@ fn generate_struct_serializer(
 
         // read bytes code
         quote! {
-            pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+            pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8) -> Result<Self, #error_type> {
                 #(#field_serializations)*
 
                 Ok(Self {
@@ -186,25 +186,25 @@ fn generate_struct_serializer(
                 })
             }
 
-            pub fn from_bytes(bytes: &[u8], config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+            pub fn from_bytes(bytes: &[u8]) -> Result<Self, #error_type> {
                 let mut bits = 0;
                 let mut pos = 0;
-                Self::from_bytes_internal(bytes, &mut pos, &mut bits, config)
+                Self::from_bytes_internal(bytes, &mut pos, &mut bits)
             }
         }
     } else {
         // write bytes code
         quote! {
-            pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
+            pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8) -> Result<(), #error_type> {
                 #(#field_serializations)*
                 Ok(())
             }
 
-            pub fn to_bytes(&self, config: &binary_codec::SerializationConfig) -> Result<Vec<u8>, #error_type> {
+            pub fn to_bytes(&self) -> Result<Vec<u8>, #error_type> {
                 let mut bytes = Vec::new();
                 let mut bits = 0;
                 let mut pos = 0;
-                self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, config)?;
+                self.to_bytes_internal(&mut bytes, &mut pos, &mut bits)?;
                 Ok(bytes)
             }
         }
@@ -321,22 +321,22 @@ fn generate_enum_serializer(
     if read {
         quote! {
             impl #enum_name {
-                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8) -> Result<Self, #error_type> {
                     match _p_disc {
                         #(#variants,)*
                         _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
                     }
                 }
 
-                pub fn from_bytes_internal(bytes: &[u8], pos: &mut usize, bits: &mut u8, config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+                pub fn from_bytes_internal(bytes: &[u8], pos: &mut usize, bits: &mut u8) -> Result<Self, #error_type> {
                     let _p_disc: u8 = binary_codec::encodings::FixedInt::read(bytes, pos, bits)?;
-                    Self::from_bytes_internal_with_disc(_p_disc, bytes, pos, bits, config)
+                    Self::from_bytes_internal_with_disc(_p_disc, bytes, pos, bits)
                 }
 
-                pub fn from_bytes(bytes: &[u8], config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+                pub fn from_bytes(bytes: &[u8]) -> Result<Self, #error_type> {
                     let mut pos = 0;
                     let mut bits = 0;
-                    Self::from_bytes_internal(bytes, &mut pos, &mut bits, config)
+                    Self::from_bytes_internal(bytes, &mut pos, &mut bits)
                 }
             }
         }
@@ -344,18 +344,18 @@ fn generate_enum_serializer(
     } else {
         quote! {
             impl #enum_name {
-                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
+                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8) -> Result<(), #error_type> {
                     match self {
                         #(#variants)*
                     }
                     Ok(())
                 }
 
-                pub fn to_bytes(&self, config: &binary_codec::SerializationConfig) -> Result<Vec<u8>, #error_type> {
+                pub fn to_bytes(&self) -> Result<Vec<u8>, #error_type> {
                     let mut bytes = Vec::new();
                     let mut pos = 0;
                     let mut bits = 0;
-                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, config)?;
+                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits)?;
                     Ok(bytes)
                 }
             }
@@ -571,7 +571,7 @@ fn generate_code_for_handling_field(
                     }
                 }
                 _ => {
-                    // Other types: try to call to_bytes(config) or from_bytes()
+                    // Other types: try to call to_bytes() or from_bytes()
                     // It is possible to have length determined
                     let (len_specified, dynamic_len) = generate_dynamic_length(
                         read,
@@ -585,11 +585,11 @@ fn generate_code_for_handling_field(
                             let variant_by = get_reference_accessor(variant_by);
                             quote! {
                                 let _p_disc = #variant_by;
-                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits, _p_config)?;
+                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits)?;
                             }
                         } else {
                             quote! {
-                                let _p_val = #field_type::from_bytes_internal(_p_slice, &mut _s_pos, _p_bits, _p_config)?;
+                                let _p_val = #field_type::from_bytes_internal(_p_slice, &mut _s_pos, _p_bits)?;
                             }
                         };
 
@@ -626,7 +626,7 @@ fn generate_code_for_handling_field(
                             quote! {
                                 let mut _s_pos = 0;
                                 let mut _vec: Vec<u8> = Vec::new();
-                                _p_val.to_bytes_internal(&mut _vec, &mut _s_pos, _p_bits, _p_config)?;
+                                _p_val.to_bytes_internal(&mut _vec, &mut _s_pos, _p_bits)?;
                                 let _p_slice = &_vec;
                                 #dynamic_len
                                 _p_bytes.extend_from_slice(_p_slice);
@@ -634,7 +634,7 @@ fn generate_code_for_handling_field(
                             }
                         } else {
                             quote! {
-                                _p_val.to_bytes_internal(_p_bytes, _p_pos, _p_bits, _p_config)?;
+                                _p_val.to_bytes_internal(_p_bytes, _p_pos, _p_bits)?;
                             }
                         }
                     }
