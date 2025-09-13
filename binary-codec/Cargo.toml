@@ -1,0 +1,15 @@
+[package]
+name = "binary-codec"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+homepage = "https://github.com/maurictg/Binary-Codec"
+repository = "https://github.com/maurictg/Binary-Codec"
+readme = "README.md"
+description = "A binary codec for Rust that provides serialization and deserialization of data structures to and from binary formats."
+authors = ["Maurictg <maurictg@gmail.com>"]
+keywords = ["binary", "codec", "serialization", "deserialization"]
+publish = true
+
+[dependencies]
+binary-codec-derive = { path = "../binary-codec-derive" }

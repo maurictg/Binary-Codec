@@ -1,0 +1,2 @@
+[workspace]
+members = [ "binary-codec", "binary-codec-derive"]
