@@ -12,4 +12,4 @@ keywords = ["binary", "codec", "serialization", "deserialization"]
 publish = true
 
 [dependencies]
-binary-codec-derive = { path = "../binary-codec-derive" }
+binary-codec-derive = "0.1.0"
