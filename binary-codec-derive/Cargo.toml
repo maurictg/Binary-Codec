@@ -2,6 +2,14 @@
 name = "binary-codec-derive"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+homepage = "https://github.com/maurictg/Binary-Codec"
+repository = "https://github.com/maurictg/Binary-Codec"
+readme = "../README.md"
+description = "Derive crate for the binary-codec crate"
+authors = ["maurictg"]
+keywords = ["binary", "codec", "serialization", "deserialization"]
+publish = true
 
 [lib]
 proc-macro = true

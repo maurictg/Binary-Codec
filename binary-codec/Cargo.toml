@@ -5,11 +5,11 @@ edition = "2024"
 license = "MIT"
 homepage = "https://github.com/maurictg/Binary-Codec"
 repository = "https://github.com/maurictg/Binary-Codec"
-readme = "README.md"
+readme = "../README.md"
 description = "A binary codec for Rust that provides serialization and deserialization of data structures to and from binary formats."
-authors = ["Maurictg <maurictg@gmail.com>"]
+authors = ["maurictg"]
 keywords = ["binary", "codec", "serialization", "deserialization"]
 publish = true
 
 [dependencies]
-binary-codec-derive = { path = "../binary-codec-derive", version = "0.1.0"}
+binary-codec-derive = { path = "../binary-codec-derive" }
