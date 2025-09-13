@@ -178,7 +178,7 @@ fn generate_struct_serializer(
 
         // read bytes code
         quote! {
-            fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+            pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
                 #(#field_serializations)*
 
                 Ok(Self {
@@ -195,7 +195,7 @@ fn generate_struct_serializer(
     } else {
         // write bytes code
         quote! {
-            fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
+            pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
                 #(#field_serializations)*
                 Ok(())
             }
@@ -321,14 +321,14 @@ fn generate_enum_serializer(
     if read {
         quote! {
             impl #enum_name {
-                fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
                     match _p_disc {
                         #(#variants,)*
                         _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
                     }
                 }
 
-                fn from_bytes_internal(bytes: &[u8], pos: &mut usize, bits: &mut u8, config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
+                pub fn from_bytes_internal(bytes: &[u8], pos: &mut usize, bits: &mut u8, config: &binary_codec::SerializationConfig) -> Result<Self, #error_type> {
                     let _p_disc: u8 = binary_codec::encodings::FixedInt::read(bytes, pos, bits)?;
                     Self::from_bytes_internal_with_disc(_p_disc, bytes, pos, bits, config)
                 }
@@ -344,7 +344,7 @@ fn generate_enum_serializer(
     } else {
         quote! {
             impl #enum_name {
-                fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
+                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &binary_codec::SerializationConfig) -> Result<(), #error_type> {
                     match self {
                         #(#variants)*
                     }

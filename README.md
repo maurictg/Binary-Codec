@@ -34,8 +34,7 @@ binary-codec = "0.1.0"
 Import macros:
 
 ```rust
-use plabble_derive::{ToBytes, FromBytes};
-use plabble_codec::SerializationConfig;
+use binary_codec::{ToBytes, FromBytes};
 ```
 
 ## Example: Bit Packing
@@ -109,7 +108,7 @@ struct MultiByte {
 ## Supported Attributes
 
 - `#[bits = N]`: Use N bits for this integer field (1 ≤ N ≤ 7 for u8/i8).
-- `#[dynamic]`: Use dynamic integer encoding (see `dyn_int.rs` in plabble-codec).
+- `#[dynamic]`: Use dynamic integer encoding (see `dyn_int.rs` in binary-codec).
 - `#[dynamic_len]`: Prefix Vec, String, or object with a dynamic length field (using dynamic integer encoding)
 - `#[length_determined_by = "field"]`: Use another field to determine the length of a Vec or String. You can also use `field.0` if the field is an array or Vec.
 - `#[toggled_by = "field"]`: Option is present only if the referenced field is true (should be a bool). You can also use `field.0` if the field is an array or Vec.
