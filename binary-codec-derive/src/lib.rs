@@ -6,7 +6,7 @@ use syn::{
     Lit, PathArguments, Type,
 };
 
-type FieldReference<'a> = (&'a syn::Ident, Option<usize>);
+type FieldReference<'a> = (&'a syn::Ident, Option<i32>);
 
 #[proc_macro_derive(
     ToBytes,
@@ -582,7 +582,7 @@ fn generate_code_for_handling_field(
 
                     if read {
                         let read_code = if let Some(variant_by) = variant_by_field {
-                            let variant_by = get_reference_accessor(variant_by);
+                            let variant_by = get_reference_accessor(variant_by, false);
                             quote! {
                                 let _p_disc = #variant_by;
                                 let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits)?;
@@ -669,7 +669,7 @@ fn generate_code_for_handling_field(
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
 
                         if let Some(toggled_by) = toggled_by_field {
-                            let toggled_by = get_reference_accessor(toggled_by);
+                            let toggled_by = get_reference_accessor(toggled_by, !read);
                             // If toggled_by is set, read or write it
                             if read {
                                 quote! {
@@ -682,7 +682,7 @@ fn generate_code_for_handling_field(
                                 }
                             } else {
                                 quote! {
-                                    if self.#toggled_by {
+                                    if #toggled_by {
                                         let _p_val = _p_val.as_ref().expect("Expected Some value, because toggled_by field is true");
                                         #handle
                                     }
@@ -1000,9 +1000,15 @@ fn get_field_name_from_attribute<'a>(
     attr: &Attribute,
     fields: &'a Fields,
     field_name: &syn::Ident,
-) -> (&'a syn::Ident, Option<usize>) {
-    let field_name = get_string_value_from_attribute(attribute_name, attr, field_name);
-    let mut index: Option<usize> = None;
+) -> (&'a syn::Ident, Option<i32>) {
+    let mut field_name = get_string_value_from_attribute(attribute_name, attr, field_name);
+    let mut index: Option<i32> = None;
+
+    if field_name.starts_with('!') {
+        // Special case for toggled_by = "!field_name", meaning the negation of a boolean field
+        field_name = field_name.trim_start_matches('!').to_string();
+        index = Some(-1);
+    }
 
     let field_name = if field_name.contains('.') {
         let parts: Vec<&str> = field_name.split('.').collect();
@@ -1066,10 +1072,25 @@ fn get_two_types(path: &syn::Path) -> Option<(&syn::Type, &syn::Type)> {
     None
 }
 
-fn get_reference_accessor(field_reference: FieldReference) -> proc_macro2::TokenStream {
+fn get_reference_accessor(field_reference: FieldReference, is_self: bool) -> proc_macro2::TokenStream {
     let name = field_reference.0;
     if let Some(index) = field_reference.1 {
-        quote! { #name[#index] }
+        if index == -1 {
+            if is_self {
+                quote! { !self.#name }
+            } else {
+                quote! { !#name }
+            }
+        } else {
+            let index = index as usize;
+            if is_self {
+                quote! { self.#name[#index] }
+            } else {
+                quote! { #name[#index] }
+            }
+        }
+    } else if is_self {
+        quote! { self.#name }
     } else {
         quote! { #name }
     }
@@ -1100,14 +1121,14 @@ fn generate_dynint(read: bool) -> proc_macro2::TokenStream {
  */
 fn generate_dynamic_length(
     read: bool,
-    length_determining_field: Option<(&syn::Ident, Option<usize>)>,
+    length_determining_field: Option<(&syn::Ident, Option<i32>)>,
     dynamic_length_depth: Option<usize>,
     item: proc_macro2::TokenStream,
 ) -> (bool, proc_macro2::TokenStream) {
     let dynint = generate_dynint(read);
     if read {
         if let Some(length_determining_field) = length_determining_field {
-            let length_determining_field = get_reference_accessor(length_determining_field);
+            let length_determining_field = get_reference_accessor(length_determining_field, false);
             (
                 true,
                 quote! {
@@ -1129,11 +1150,11 @@ fn generate_dynamic_length(
         }
     } else {
         if let Some(length_determining_field) = length_determining_field {
-            let length_determining_field = get_reference_accessor(length_determining_field);
+            let length_determining_field = get_reference_accessor(length_determining_field, true);
             (
                 true,
                 quote! {
-                    let expected_len = self.#length_determining_field as usize;
+                    let expected_len = #length_determining_field as usize;
                     if #item.len() != expected_len {
                         return Err(binary_codec::SerializationError::UnexpectedLength(expected_len, #item.len()));
                     }
