@@ -49,10 +49,17 @@ pub trait FixedInt<const S: usize> : Sized {
         pos: &mut usize,
         bits: &mut u8,
     ) -> Result<Self, DeserializationError> {
-        *bits = 0;
-        if *pos + S > bytes.len() {
-            return Err(DeserializationError::NotEnoughBytes(*pos + S - bytes.len()));
+        // "reset_bits"
+        if *bits != 0 && *pos == 0 {
+            *pos += 1;
         }
+
+        *bits = 0;
+        
+        if *pos + S > bytes.len() {
+            return Err(DeserializationError::NotEnoughBytes(*pos + S - (bytes.len() - 1)));
+        }
+
         let val = Self::deserialize(&bytes[*pos..*pos + S]);
         *pos += S;
         Ok(val)

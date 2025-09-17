@@ -12,12 +12,14 @@ type FieldReference<'a> = (&'a syn::Ident, Option<i32>);
     ToBytes,
     attributes(
         length_determined_by,
-        toggled_by,
         bits,
         dynamic,
         dynamic_len,
         variant_by,
-        no_disc_prefix
+        no_disc_prefix,
+        toggle_key,
+        toggled_by_key,
+        toggled_by_field
     )
 )]
 pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -28,12 +30,14 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
     FromBytes,
     attributes(
         length_determined_by,
-        toggled_by,
         bits,
         dynamic,
         dynamic_len,
         variant_by,
-        no_disc_prefix
+        no_disc_prefix,
+        toggle_key,
+        toggled_by_key,
+        toggled_by
     )
 )]
 pub fn generate_code_from_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -72,8 +76,10 @@ fn generate_struct_serializer(
         let field_type = &field.ty;
 
         let mut length_determining_field = None;
-        let mut toggled_by_field = None;
         let mut variant_by_field = None;
+        let mut toggled_by_field = None;
+        let mut toggles_key: Option<String> = None;
+        let mut toggled_by_key = None;
         let mut bits_count_type = None;
         let mut is_dynamic = false;
         let mut dynamic_length_depth = None;
@@ -91,22 +97,22 @@ fn generate_struct_serializer(
                 ))
             }
 
-            // #[toggled_by = "other_field"] attribute
-            // or: #[toggled_by = "other_field.2"] by index of array/Vec
-            if attr.path().is_ident("toggled_by") {
-                toggled_by_field = Some(get_field_name_from_attribute(
-                    "toggled_by",
+            // #[variant_by = "other_field"] attribute
+            // or: #[variant_by = "other_field.2"] by index of array/Vec
+            if attr.path().is_ident("variant_by") {
+                variant_by_field = Some(get_field_name_from_attribute(
+                    "variant_by",
                     attr,
                     fields,
                     field_name,
                 ))
             }
 
-            // #[variant_by = "other_field"] attribute
-            // or: #[variant_by = "other_field.2"] by index of array/Vec
-            if attr.path().is_ident("variant_by") {
-                variant_by_field = Some(get_field_name_from_attribute(
-                    "variant_by",
+            // #[toggled_by = "other_field"] attribute
+            // or: #[toggled_by = "other_field.2"] by index of array/Vec
+            if attr.path().is_ident("toggled_by") {
+                toggled_by_field = Some(get_field_name_from_attribute(
+                    "toggled_by",
                     attr,
                     fields,
                     field_name,
@@ -133,7 +139,36 @@ fn generate_struct_serializer(
 
                 dynamic_length_depth = dynamic_len_value;
             }
+
+            if attr.path().is_ident("toggle_key") {
+                toggles_key = Some(get_string_value_from_attribute(
+                    "toggle_key",
+                    attr,
+                    field_name,
+                ));
+            }
+
+            if attr.path().is_ident("toggled_by_key") {
+                toggled_by_key = Some(get_string_value_from_attribute(
+                    "toggled_by_key",
+                    attr,
+                    field_name,
+                ));
+            }
         }
+
+        // Runtime toggle_key
+        let toggles = if let Some(key) = toggles_key {
+            if read {
+                quote! {
+                    _p_config.set_toggle(#key, _p_val);
+                }
+            } else {
+                quote! {
+                    _p_config.set_toggle(#key, *_p_val);
+                }
+            }
+        } else { quote! {} };
 
         // Compose code to handle field
         let before = if read {
@@ -141,15 +176,19 @@ fn generate_struct_serializer(
         } else {
             quote! {
                 let _p_val = &self.#field_name;
+                #toggles
             }
         };
 
         let after = if read {
             quote! {
                 let #field_name = _p_val;
+                #toggles
             }
         } else {
-            quote! {}
+            quote! {
+
+            }
         };
 
         let handle_field = generate_code_for_handling_field(
@@ -160,8 +199,9 @@ fn generate_struct_serializer(
             is_dynamic,
             dynamic_length_depth,
             length_determining_field,
-            toggled_by_field,
             variant_by_field,
+            toggled_by_field,
+            toggled_by_key,
             0,
         );
 
@@ -178,44 +218,49 @@ fn generate_struct_serializer(
 
         // read bytes code
         quote! {
-            pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8) -> Result<Self, #error_type> {
-                #(#field_serializations)*
-
-                Ok(Self {
-                    #(#vars),*
-                })
+            impl binary_codec::BinaryDeserializer for #struct_name {
+                fn from_bytes(bytes: &[u8], config: Option<binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
+                    let mut bits = 0;
+                    let mut pos = 0;
+                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
+                    Self::from_bytes_internal(bytes, &mut pos, &mut bits, &mut config)
+                }
             }
 
-            pub fn from_bytes(bytes: &[u8]) -> Result<Self, #error_type> {
-                let mut bits = 0;
-                let mut pos = 0;
-                Self::from_bytes_internal(bytes, &mut pos, &mut bits)
+            impl #struct_name {
+                pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
+                    #(#field_serializations)*
+
+                    Ok(Self {
+                        #(#vars),*
+                    })
+                }
             }
         }
     } else {
         // write bytes code
         quote! {
-            pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8) -> Result<(), #error_type> {
-                #(#field_serializations)*
-                Ok(())
+            impl binary_codec::BinarySerializer for #struct_name {
+                fn to_bytes(&self, config: Option<binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
+                    let mut bytes = Vec::new();
+                    let mut bits = 0;
+                    let mut pos = 0;
+                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
+                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, &mut config)?;
+                    Ok(bytes)
+                }
             }
-
-            pub fn to_bytes(&self) -> Result<Vec<u8>, #error_type> {
-                let mut bytes = Vec::new();
-                let mut bits = 0;
-                let mut pos = 0;
-                self.to_bytes_internal(&mut bytes, &mut pos, &mut bits)?;
-                Ok(bytes)
+            
+            impl #struct_name {
+                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<(), #error_type> {
+                    #(#field_serializations)*
+                    Ok(())
+                }
             }
         }
     };
 
-    quote! {
-        impl #struct_name {
-            #serializer_code
-        }
-    }
-    .into()
+    serializer_code.into()
 }
 
 fn generate_enum_serializer(
@@ -320,43 +365,49 @@ fn generate_enum_serializer(
 
     if read {
         quote! {
+            impl binary_codec::BinaryDeserializer for #enum_name {
+                fn from_bytes(bytes: &[u8], config: Option<binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
+                    let mut pos = 0;
+                    let mut bits = 0;
+                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
+                    Self::from_bytes_internal(bytes, &mut pos, &mut bits, &mut config)
+                }
+            }
+
             impl #enum_name {
-                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8) -> Result<Self, #error_type> {
+                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
                     match _p_disc {
                         #(#variants,)*
                         _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
                     }
                 }
 
-                pub fn from_bytes_internal(bytes: &[u8], pos: &mut usize, bits: &mut u8) -> Result<Self, #error_type> {
-                    let _p_disc: u8 = binary_codec::encodings::FixedInt::read(bytes, pos, bits)?;
-                    Self::from_bytes_internal_with_disc(_p_disc, bytes, pos, bits)
-                }
-
-                pub fn from_bytes(bytes: &[u8]) -> Result<Self, #error_type> {
-                    let mut pos = 0;
-                    let mut bits = 0;
-                    Self::from_bytes_internal(bytes, &mut pos, &mut bits)
+                pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
+                    let _p_disc: u8 = binary_codec::encodings::FixedInt::read(_p_bytes, _p_pos, _p_bits)?;
+                    Self::from_bytes_internal_with_disc(_p_disc, _p_bytes, _p_pos, _p_bits, _p_config)
                 }
             }
         }
         .into()
     } else {
         quote! {
+            impl binary_codec::BinarySerializer for #enum_name {
+                fn to_bytes(&self, config: Option<binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
+                    let mut bytes = Vec::new();
+                    let mut pos = 0;
+                    let mut bits = 0;
+                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
+                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, &mut config)?;
+                    Ok(bytes)
+                }
+            }
+
             impl #enum_name {
-                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8) -> Result<(), #error_type> {
+                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<(), #error_type> {
                     match self {
                         #(#variants)*
                     }
                     Ok(())
-                }
-
-                pub fn to_bytes(&self) -> Result<Vec<u8>, #error_type> {
-                    let mut bytes = Vec::new();
-                    let mut pos = 0;
-                    let mut bits = 0;
-                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits)?;
-                    Ok(bytes)
                 }
             }
         }
@@ -379,6 +430,7 @@ fn generate_enum_field_serializations(
             field_ident,
             None,
             false,
+            None,
             None,
             None,
             None,
@@ -409,8 +461,9 @@ fn generate_code_for_handling_field(
     is_dynamic: bool,
     dynamic_length_depth: Option<usize>,
     length_determining_field: Option<FieldReference>,
-    toggled_by_field: Option<FieldReference>,
     variant_by_field: Option<FieldReference>,
+    toggled_by_field: Option<FieldReference>,
+    toggled_by_key: Option<String>,
     level: usize,
 ) -> proc_macro2::TokenStream {
     if let Type::Path(path) = field_type {
@@ -543,21 +596,24 @@ fn generate_code_for_handling_field(
                         quote! { _string },
                     );
 
+                    // A string should have full _p_bytes, and start with a full byte
+                    let reset_bits = generate_reset_bits();
+
                     if read {
                         if len_specified {
                             quote! {
+                                #reset_bits
                                 #dynamic_len
                                 let _string = &_p_bytes[*_p_pos..*_p_pos + _p_len];
                                 let _p_val = String::from_utf8(_string.to_vec()).expect("Invalid string");
                                 *_p_pos += _string.len();
-                                *_p_bits = 0; // A string should have full _p_bytes, and start with a full byte
                             }
                         } else {
                             quote! {
+                                #reset_bits
                                 let _string = &_p_bytes[*_p_pos..];
                                 let _p_val = String::from_utf8(_string.to_vec()).expect("Invalid string");
                                 *_p_pos += _string.len();
-                                *_p_bits = 0; // A string should have full _p_bytes, and start with a full byte
                             }
                         }
                     } else {
@@ -585,13 +641,15 @@ fn generate_code_for_handling_field(
                             let variant_by = get_reference_accessor(variant_by, false);
                             quote! {
                                 let _p_disc = #variant_by;
-                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits)?;
+                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits, _p_config)?;
                             }
                         } else {
                             quote! {
-                                let _p_val = #field_type::from_bytes_internal(_p_slice, &mut _s_pos, _p_bits)?;
+                                let _p_val = #field_type::from_bytes_internal(_p_slice, &mut _s_pos, _p_bits, _p_config)?;
                             }
                         };
+
+                        // TODO: the bits logic is not perfect. If next object doesnt read bits, it needs to reset
 
                         let handle = if len_specified {
                             quote! {
@@ -626,7 +684,7 @@ fn generate_code_for_handling_field(
                             quote! {
                                 let mut _s_pos = 0;
                                 let mut _vec: Vec<u8> = Vec::new();
-                                _p_val.to_bytes_internal(&mut _vec, &mut _s_pos, _p_bits)?;
+                                _p_val.to_bytes_internal(&mut _vec, &mut _s_pos, _p_bits, _p_config)?;
                                 let _p_slice = &_vec;
                                 #dynamic_len
                                 _p_bytes.extend_from_slice(_p_slice);
@@ -634,7 +692,7 @@ fn generate_code_for_handling_field(
                             }
                         } else {
                             quote! {
-                                _p_val.to_bytes_internal(_p_bytes, _p_pos, _p_bits)?;
+                                _p_val.to_bytes_internal(_p_bytes, _p_pos, _p_bits, _p_config)?;
                             }
                         }
                     }
@@ -662,15 +720,19 @@ fn generate_code_for_handling_field(
                             is_dynamic,
                             dynamic_length_depth,
                             length_determining_field,
-                            None,
                             variant_by_field,
+                            None,
+                            None,
                             level + 1,
                         );
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
 
-                        if let Some(toggled_by) = toggled_by_field {
-                            let toggled_by = get_reference_accessor(toggled_by, !read);
+                        if let Some(toggled_by) = toggled_by_key {
                             // If toggled_by is set, read or write it
+                            let toggled_by = quote! {
+                                _p_config.get_toggle(#toggled_by).unwrap_or(false)
+                            };
+
                             if read {
                                 quote! {
                                     let mut #option_name: Option<#inner_type> = None;
@@ -688,7 +750,27 @@ fn generate_code_for_handling_field(
                                     }
                                 }
                             }
-                        } else {
+                        } else if let Some(toggled_by) = toggled_by_field {
+                            let toggled_by = get_reference_accessor(toggled_by, !read);
+                            if read {
+                                quote! {
+                                    let mut #option_name: Option<#inner_type> = None;
+                                    if #toggled_by {
+                                        #handle
+                                        #option_name = Some(_p_val);
+                                    }
+                                    let _p_val = #option_name;
+                                }
+                            } else {
+                                quote! {
+                                    if #toggled_by {
+                                        let _p_val = _p_val.as_ref().expect("Expected Some value, because toggled_by field is true");
+                                        #handle
+                                    }
+                                }
+                            }
+                        }
+                        else {
                             // If space available, read it, write it if not None
                             if read {
                                 quote! {
@@ -718,6 +800,7 @@ fn generate_code_for_handling_field(
                             bits_count_type,
                             is_dynamic,
                             dynamic_length_depth.map(|d| d - 1),
+                            None,
                             None,
                             None,
                             None,
@@ -774,6 +857,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             level + 1,
                         );
 
@@ -784,6 +868,7 @@ fn generate_code_for_handling_field(
                             bits_count_type,
                             is_dynamic,
                             dynamic_length_depth.map(|d| d - 1),
+                            None,
                             None,
                             None,
                             None,
@@ -871,6 +956,7 @@ fn generate_code_for_handling_field(
             bits_count_type,
             is_dynamic,
             dynamic_length_depth,
+            None,
             None,
             None,
             None,
@@ -1173,5 +1259,14 @@ fn generate_dynamic_length(
                 (false, quote! {})
             }
         }
+    }
+}
+
+fn generate_reset_bits() -> proc_macro2::TokenStream {
+    quote! {
+        if *_p_bits != 0 && *_p_pos == 0 {
+            *_p_pos += 1;
+        }
+        *_p_bits = 0;
     }
 }
