@@ -19,7 +19,9 @@ type FieldReference<'a> = (&'a syn::Ident, Option<i32>);
         no_disc_prefix,
         toggle_key,
         toggled_by_key,
-        toggled_by_field
+        toggled_by,
+        length_key,
+        length_by_key
     )
 )]
 pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -37,7 +39,9 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
         no_disc_prefix,
         toggle_key,
         toggled_by_key,
-        toggled_by
+        toggled_by,
+        length_key,
+        length_by_key
     )
 )]
 pub fn generate_code_from_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -78,8 +82,10 @@ fn generate_struct_serializer(
         let mut length_determining_field = None;
         let mut variant_by_field = None;
         let mut toggled_by_field = None;
-        let mut toggles_key: Option<String> = None;
+        let mut toggles_key = None;
+        let mut length_key = None;
         let mut toggled_by_key = None;
+        let mut length_by_key = None;
         let mut bits_count_type = None;
         let mut is_dynamic = false;
         let mut dynamic_length_depth = None;
@@ -148,9 +154,25 @@ fn generate_struct_serializer(
                 ));
             }
 
+            if attr.path().is_ident("length_key") {
+                length_key = Some(get_string_value_from_attribute(
+                    "length_key",
+                    attr,
+                    field_name,
+                ));
+            }
+
             if attr.path().is_ident("toggled_by_key") {
                 toggled_by_key = Some(get_string_value_from_attribute(
                     "toggled_by_key",
+                    attr,
+                    field_name,
+                ));
+            }
+
+            if attr.path().is_ident("length_by_key") {
+                length_by_key = Some(get_string_value_from_attribute(
+                    "length_by_key",
                     attr,
                     field_name,
                 ));
@@ -170,6 +192,19 @@ fn generate_struct_serializer(
             }
         } else { quote! {} };
 
+        // Runtime length_key
+        let length = if let Some(key) = length_key {
+            if read {
+                quote! {
+                    _p_config.set_length(#key, _p_val as usize);
+                }
+            } else {
+                quote! {
+                    _p_config.set_length(#key, *_p_val as usize);
+                }
+            }
+        } else { quote! {} };
+
         // Compose code to handle field
         let before = if read {
             quote! {}
@@ -177,6 +212,7 @@ fn generate_struct_serializer(
             quote! {
                 let _p_val = &self.#field_name;
                 #toggles
+                #length
             }
         };
 
@@ -184,6 +220,7 @@ fn generate_struct_serializer(
             quote! {
                 let #field_name = _p_val;
                 #toggles
+                #length
             }
         } else {
             quote! {
@@ -202,6 +239,7 @@ fn generate_struct_serializer(
             variant_by_field,
             toggled_by_field,
             toggled_by_key,
+            length_by_key,
             0,
         );
 
@@ -435,6 +473,7 @@ fn generate_enum_field_serializations(
             None,
             None,
             None,
+            None,
             0,
         );
 
@@ -464,6 +503,7 @@ fn generate_code_for_handling_field(
     variant_by_field: Option<FieldReference>,
     toggled_by_field: Option<FieldReference>,
     toggled_by_key: Option<String>,
+    length_by_key: Option<String>,
     level: usize,
 ) -> proc_macro2::TokenStream {
     if let Type::Path(path) = field_type {
@@ -593,6 +633,7 @@ fn generate_code_for_handling_field(
                         read,
                         length_determining_field,
                         dynamic_length_depth,
+                        length_by_key,
                         quote! { _string },
                     );
 
@@ -633,6 +674,7 @@ fn generate_code_for_handling_field(
                         read,
                         length_determining_field,
                         dynamic_length_depth,
+                        length_by_key,
                         quote! { _p_slice },
                     );
 
@@ -641,43 +683,29 @@ fn generate_code_for_handling_field(
                             let variant_by = get_reference_accessor(variant_by, false);
                             quote! {
                                 let _p_disc = #variant_by;
-                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, &mut _s_pos, _p_bits, _p_config)?;
+                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, _p_pos, _p_bits, _p_config)?;
                             }
                         } else {
                             quote! {
-                                let _p_val = #field_type::from_bytes_internal(_p_slice, &mut _s_pos, _p_bits, _p_config)?;
+                                let _p_val = #field_type::from_bytes_internal(_p_slice, _p_pos, _p_bits, _p_config)?;
                             }
                         };
 
-                        // TODO: the bits logic is not perfect. If next object doesnt read bits, it needs to reset
 
                         let handle = if len_specified {
                             quote! {
                                 #dynamic_len
-                                let __s_pos = if *_p_bits != 0 && *_p_pos != 0 {
-                                    *_p_pos - 1
-                                } else {
-                                    *_p_pos
-                                };
-                                let _p_slice = &_p_bytes[__s_pos..__s_pos + _p_len];
+                                let _p_slice = _p_bytes;
                             }
                         } else {
                             quote! {
-                                let __s_pos = if *_p_bits != 0 && *_p_pos != 0 {
-                                    *_p_pos - 1
-                                } else {
-                                 *_p_pos
-                                };
-                                let _p_slice = &_p_bytes[__s_pos..];
+                                let _p_slice = _p_bytes;
                             }
                         };
 
-                        // It MIGHT be that the next objects reads bits from the last byte
                         quote! {
                             #handle
-                            let mut _s_pos = 0;
                             #read_code
-                            *_p_pos += _s_pos;
                         }
                     } else {
                         if len_specified {
@@ -721,6 +749,7 @@ fn generate_code_for_handling_field(
                             dynamic_length_depth,
                             length_determining_field,
                             variant_by_field,
+                            None,
                             None,
                             None,
                             level + 1,
@@ -804,6 +833,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             level + 1,
                         );
 
@@ -811,6 +841,7 @@ fn generate_code_for_handling_field(
                             read,
                             length_determining_field,
                             dynamic_length_depth,
+                            length_by_key,
                             quote! { _p_val },
                         );
 
@@ -858,6 +889,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             level + 1,
                         );
 
@@ -872,6 +904,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             level + 1,
                         );
 
@@ -879,6 +912,7 @@ fn generate_code_for_handling_field(
                             read,
                             length_determining_field,
                             dynamic_length_depth,
+                            length_by_key,
                             quote! { _p_val },
                         );
 
@@ -956,6 +990,7 @@ fn generate_code_for_handling_field(
             bits_count_type,
             is_dynamic,
             dynamic_length_depth,
+            None,
             None,
             None,
             None,
@@ -1209,6 +1244,7 @@ fn generate_dynamic_length(
     read: bool,
     length_determining_field: Option<(&syn::Ident, Option<i32>)>,
     dynamic_length_depth: Option<usize>,
+    length_by_key: Option<String>,
     item: proc_macro2::TokenStream,
 ) -> (bool, proc_macro2::TokenStream) {
     let dynint = generate_dynint(read);
@@ -1219,6 +1255,14 @@ fn generate_dynamic_length(
                 true,
                 quote! {
                     let _p_len = #length_determining_field as usize;
+                },
+            )
+        } else if let Some(length_by_key) = length_by_key {
+            (
+                true,
+                quote! {
+                    let _p_len = _p_config.get_length(#length_by_key)
+                        .ok_or(binary_codec::DeserializationError::MissingLengthByKey(#length_by_key.to_string()))?;
                 },
             )
         } else {
@@ -1241,6 +1285,17 @@ fn generate_dynamic_length(
                 true,
                 quote! {
                     let expected_len = #length_determining_field as usize;
+                    if #item.len() != expected_len {
+                        return Err(binary_codec::SerializationError::UnexpectedLength(expected_len, #item.len()));
+                    }
+                },
+            )
+        } else if let Some(length_by_key) = length_by_key {
+            (
+                true,
+                quote! {
+                    let expected_len = _p_config.get_length(#length_by_key)
+                        .ok_or(binary_codec::SerializationError::MissingLengthByKey(#length_by_key.to_string()))?;
                     if #item.len() != expected_len {
                         return Err(binary_codec::SerializationError::UnexpectedLength(expected_len, #item.len()));
                     }

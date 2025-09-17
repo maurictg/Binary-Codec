@@ -95,6 +95,8 @@ fn read_small_dynamic(
     bit_count: u8
 ) -> Result<u8, DeserializationError>
 {
+    println!("DynamicSm({}) pos={}, bits={}, bytes= {:?}", bit_count, pos, bits, &bytes);
+
     let (current_bits, next_bits, next_byte) = next_bits_and_byte(*bits, bit_count);
     let mask = create_mask(&current_bits, bit_count);
 

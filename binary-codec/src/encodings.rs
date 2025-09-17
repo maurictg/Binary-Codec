@@ -53,8 +53,9 @@ pub trait FixedInt<const S: usize> : Sized {
         if *bits != 0 && *pos == 0 {
             *pos += 1;
         }
-
         *bits = 0;
+
+        println!("FixedInt({}) pos={}, bits={}, bytes= {:?}", S, pos, bits, &bytes);
         
         if *pos + S > bytes.len() {
             return Err(DeserializationError::NotEnoughBytes(*pos + S - (bytes.len() - 1)));

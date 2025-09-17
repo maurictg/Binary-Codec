@@ -4,7 +4,10 @@ pub enum SerializationError {
     ValueOutOfBounds(i32, i32, i32),
 
     // Unexpected size (expected, actual)
-    UnexpectedLength(usize, usize)
+    UnexpectedLength(usize, usize),
+
+    /// Missing runtime length key
+    MissingLengthByKey(String),
 }
 
 #[derive(Debug)]
@@ -13,7 +16,10 @@ pub enum DeserializationError {
     NotEnoughBytes(usize),
 
     /// Unknown enum discriminator
-    UnknownDiscriminant(u8)
+    UnknownDiscriminant(u8),
+
+    /// Missing runtime length key
+    MissingLengthByKey(String),
 }
 
 pub struct SerializerConfig {
