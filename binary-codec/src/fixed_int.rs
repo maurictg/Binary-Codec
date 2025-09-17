@@ -1,29 +1,27 @@
-use crate::{DeserializationError, SerializationError};
+use crate::{DeserializationError, SerializationError, SerializerConfig, utils::{ensure_size, slice}};
 
 pub fn write_zigzag<T, const S: usize>(
     val: T,
     bytes: &mut Vec<u8>,
-    pos: &mut usize,
-    bits: &mut u8,
+    config: &mut SerializerConfig
 ) -> Result<(), SerializationError>
 where
     T: ZigZag,
     T::Unsigned: FixedInt<S>,
 {
     let encoded = val.to_unsigned();
-    encoded.write(bytes, pos, bits)
+    encoded.write(bytes, config)
 }
 
 pub fn read_zigzag<T, const S: usize>(
     bytes: &[u8],
-    pos: &mut usize,
-    bits: &mut u8,
+    config: &mut SerializerConfig
 ) -> Result<T, DeserializationError>
 where
     T: ZigZag,
     T::Unsigned: FixedInt<S>,
 {
-    let raw = T::Unsigned::read(bytes, pos, bits)?;
+    let raw = T::Unsigned::read(bytes, config)?;
     Ok(T::to_signed(raw))
 }
 
@@ -35,35 +33,21 @@ pub trait FixedInt<const S: usize> : Sized {
     fn write(
         self,
         bytes: &mut Vec<u8>,
-        pos: &mut usize,
-        bits: &mut u8,
+        config: &mut SerializerConfig
     ) -> Result<(), SerializationError> {
-        *bits = 0;
+        config.reset_bits(false);
         bytes.extend_from_slice(&self.serialize());
-        *pos += S;
+        config.pos += S;
         Ok(())
     }
 
     fn read(
         bytes: &[u8],
-        pos: &mut usize,
-        bits: &mut u8,
+        config: &mut SerializerConfig
     ) -> Result<Self, DeserializationError> {
-        // "reset_bits"
-        if *bits != 0 && *pos == 0 {
-            *pos += 1;
-        }
-        *bits = 0;
-
-        println!("FixedInt({}) pos={}, bits={}, bytes= {:?}", S, pos, bits, &bytes);
-        
-        if *pos + S > bytes.len() {
-            return Err(DeserializationError::NotEnoughBytes(*pos + S - (bytes.len() - 1)));
-        }
-
-        let val = Self::deserialize(&bytes[*pos..*pos + S]);
-        *pos += S;
-        Ok(val)
+        config.reset_bits(true);
+        ensure_size(config, bytes, S)?;
+        Ok(Self::deserialize(slice(config, bytes, S, true)?))
     }
 }
 
@@ -221,52 +205,53 @@ mod tests {
     #[test]
     fn test_write_read_zigzag_i32() {
         let mut bytes = Vec::new();
-        let mut pos = 0;
-        let mut bits = 0;
+        let mut config= SerializerConfig::new();
         let val: i32 = -123;
-        write_zigzag::<i32, 4>(val, &mut bytes, &mut pos, &mut bits).unwrap();
-        pos = 0;
-        bits = 0;
-        let decoded = read_zigzag::<i32, 4>(&bytes, &mut pos, &mut bits).unwrap();
+        write_zigzag::<i32, 4>(val, &mut bytes, &mut config).unwrap();
+        let mut config= SerializerConfig::new();
+        let decoded = read_zigzag::<i32, 4>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
 
     #[test]
     fn test_write_read_zigzag_i64() {
         let mut bytes = Vec::new();
-        let mut pos = 0;
-        let mut bits = 0;
+        let mut config= SerializerConfig::new();
         let val: i64 = 456789;
-        write_zigzag::<i64, 8>(val, &mut bytes, &mut pos, &mut bits).unwrap();
-        pos = 0;
-        bits = 0;
-        let decoded = read_zigzag::<i64, 8>(&bytes, &mut pos, &mut bits).unwrap();
+        write_zigzag::<i64, 8>(val, &mut bytes, &mut config).unwrap();
+        let mut config= SerializerConfig::new();
+        let decoded = read_zigzag::<i64, 8>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
 
     #[test]
     fn test_write_read_fixedint_u32() {
         let mut bytes = Vec::new();
-        let mut pos = 0;
-        let mut bits = 0;
+        let mut config= SerializerConfig::new();
         let val: u32 = 0b1010_1010_1010_1010_1010_1010_1010_1010;
-        val.write(&mut bytes, &mut pos, &mut bits).unwrap();
-        pos = 0;
-        bits = 0;
-        let decoded = u32::read(&bytes, &mut pos, &mut bits).unwrap();
+        val.write(&mut bytes, &mut config).unwrap();
+        let mut config= SerializerConfig::new();
+        let decoded = u32::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
 
     #[test]
     fn test_write_read_fixedint_u128() {
         let mut bytes = Vec::new();
-        let mut pos = 0;
-        let mut bits = 0;
+        let mut config= SerializerConfig::new();
         let val: u128 = 0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010;
-        val.write(&mut bytes, &mut pos, &mut bits).unwrap();
-        pos = 0;
-        bits = 0;
-        let decoded = u128::read(&bytes, &mut pos, &mut bits).unwrap();
+        val.write(&mut bytes, &mut config).unwrap();
+        let mut config= SerializerConfig::new();
+        let decoded = u128::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
+    }
+
+    #[test]
+    fn test_read_fixedint_with_offset_bits() {
+        let bytes = [0b0101_0101, 7];
+        let mut config= SerializerConfig::new();
+        config.bits = 4;
+        let decoded = u8::read(&bytes, &mut config).unwrap();
+        assert_eq!(decoded, 7);
     }
 }

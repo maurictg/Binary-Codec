@@ -1,27 +1,26 @@
 extern crate proc_macro;
 
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{
     parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, Data, DeriveInput, Fields,
     Lit, PathArguments, Type,
 };
 
-type FieldReference<'a> = (&'a syn::Ident, Option<i32>);
-
 #[proc_macro_derive(
     ToBytes,
     attributes(
-        length_determined_by,
         bits,
-        dynamic,
-        dynamic_len,
-        variant_by,
-        no_disc_prefix,
-        toggle_key,
-        toggled_by_key,
+        dyn_int,
+        dyn_length,
+        key_dyn_length,
+        val_dyn_length,
+        toggles,
         toggled_by,
-        length_key,
-        length_by_key
+        length_for,
+        length_by,
+        variant_for,
+        variant_by,
+        no_discriminator
     )
 )]
 pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -31,17 +30,18 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
 #[proc_macro_derive(
     FromBytes,
     attributes(
-        length_determined_by,
         bits,
-        dynamic,
-        dynamic_len,
-        variant_by,
-        no_disc_prefix,
-        toggle_key,
-        toggled_by_key,
+        dyn_int,
+        key_dyn_length,
+        val_dyn_length,
+        dyn_length,
+        toggles,
         toggled_by,
-        length_key,
-        length_by_key
+        length_for,
+        length_by,
+        variant_for,
+        variant_by,
+        no_discriminator
     )
 )]
 pub fn generate_code_from_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -79,108 +79,40 @@ fn generate_struct_serializer(
 
         let field_type = &field.ty;
 
-        let mut length_determining_field = None;
-        let mut variant_by_field = None;
-        let mut toggled_by_field = None;
-        let mut toggles_key = None;
+        let mut toggle_key = None;
+        let mut variant_key = None;
         let mut length_key = None;
-        let mut toggled_by_key = None;
-        let mut length_by_key = None;
-        let mut bits_count_type = None;
-        let mut is_dynamic = false;
-        let mut dynamic_length_depth = None;
+        let mut toggled_by = None;
+        let mut variant_by = None;
+        let mut length_by = None;
+        let mut is_dynamic_int = false;
+        let mut has_dynamic_length = false;
+        let mut bits_count = None;
+        let mut key_dyn_length = false;
+        let mut val_dyn_length = false;
 
         // Search attributes for length/toggle declarations
         for attr in field.attrs.iter() {
-            // #[length_determined_by = "other_field"] attribute
-            // or: #[length_determined_by = "other_field.2"] for using index of array/Vec
-            if attr.path().is_ident("length_determined_by") {
-                length_determining_field = Some(get_field_name_from_attribute(
-                    "length_determined_by",
-                    attr,
-                    fields,
-                    field_name,
-                ))
-            }
-
-            // #[variant_by = "other_field"] attribute
-            // or: #[variant_by = "other_field.2"] by index of array/Vec
-            if attr.path().is_ident("variant_by") {
-                variant_by_field = Some(get_field_name_from_attribute(
-                    "variant_by",
-                    attr,
-                    fields,
-                    field_name,
-                ))
-            }
-
-            // #[toggled_by = "other_field"] attribute
-            // or: #[toggled_by = "other_field.2"] by index of array/Vec
-            if attr.path().is_ident("toggled_by") {
-                toggled_by_field = Some(get_field_name_from_attribute(
-                    "toggled_by",
-                    attr,
-                    fields,
-                    field_name,
-                ))
-            }
-
-            // #[bits = n] attribute
-            if attr.path().is_ident("bits") {
-                let bits_count = get_int_value_from_attribute("bits", attr, field_name);
-                bits_count_type = Some(bits_count as u8);
-            }
-
-            // #[dynamic] attribute. If put on an integer, serialize as dyn_int
-            if attr.path().is_ident("dynamic") {
-                is_dynamic = true;
-            }
-
-            // #[dynamic_len] attribute. If put on object, Vec or String: prefix with dyn_int length
-            // If you want a Vec to inherit it, use #[dynamic_len(1)] on the Vec to inherit to 1st element
-            if attr.path().is_ident("dynamic_len") {
-                // Accept #[dynamic_len] or #[dynamic_len(value)] and extract integer if present
-                let dynamic_len_value: Option<usize> = get_int_value_from_attribute_2(attr)
-                    .or_else(|| Some(1));
-
-                dynamic_length_depth = dynamic_len_value;
-            }
-
-            if attr.path().is_ident("toggle_key") {
-                toggles_key = Some(get_string_value_from_attribute(
-                    "toggle_key",
-                    attr,
-                    field_name,
-                ));
-            }
-
-            if attr.path().is_ident("length_key") {
-                length_key = Some(get_string_value_from_attribute(
-                    "length_key",
-                    attr,
-                    field_name,
-                ));
-            }
-
-            if attr.path().is_ident("toggled_by_key") {
-                toggled_by_key = Some(get_string_value_from_attribute(
-                    "toggled_by_key",
-                    attr,
-                    field_name,
-                ));
-            }
-
-            if attr.path().is_ident("length_by_key") {
-                length_by_key = Some(get_string_value_from_attribute(
-                    "length_by_key",
-                    attr,
-                    field_name,
-                ));
+            let ident = attr.path().get_ident().map(|i| i.clone().to_string());
+            match ident.as_deref() {
+                Some("dyn_int") => is_dynamic_int = true,
+                Some("dyn_length") => has_dynamic_length = true,
+                Some("key_dyn_length") => key_dyn_length = true,
+                Some("val_dyn_length") => val_dyn_length = true,
+                Some("toggles") => toggle_key = get_string_value_from_attribute(attr),
+                Some("variant_for") => variant_key = get_string_value_from_attribute(attr),
+                Some("length_for") => length_key = get_string_value_from_attribute(attr),
+                Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
+                Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
+                Some("length_by") => length_by = get_string_value_from_attribute(attr),
+                Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
+                _ => panic!("Unknown attribute {} on field: `{}`", field_name, attr.path().into_token_stream()),
+                // None => continue
             }
         }
 
         // Runtime toggle_key
-        let toggles = if let Some(key) = toggles_key {
+        let toggles = if let Some(key) = toggle_key {
             if read {
                 quote! {
                     _p_config.set_toggle(#key, _p_val);
@@ -205,6 +137,19 @@ fn generate_struct_serializer(
             }
         } else { quote! {} };
 
+        // Runtime variant_key
+        let variant = if let Some(key) = variant_key {
+            if read {
+                quote! {
+                    _p_config.set_variant(#key, _p_val as u8);
+                }
+            } else {
+                quote! {
+                    _p_config.set_variant(#key, *_p_val as u8);
+                }
+            }
+        } else { quote! {} };
+
         // Compose code to handle field
         let before = if read {
             quote! {}
@@ -213,6 +158,7 @@ fn generate_struct_serializer(
                 let _p_val = &self.#field_name;
                 #toggles
                 #length
+                #variant
             }
         };
 
@@ -221,25 +167,24 @@ fn generate_struct_serializer(
                 let #field_name = _p_val;
                 #toggles
                 #length
+                #variant
             }
         } else {
-            quote! {
-
-            }
+            quote! {}
         };
 
         let handle_field = generate_code_for_handling_field(
             read,
             field_type,
             field_name,
-            bits_count_type,
-            is_dynamic,
-            dynamic_length_depth,
-            length_determining_field,
-            variant_by_field,
-            toggled_by_field,
-            toggled_by_key,
-            length_by_key,
+            bits_count,
+            toggled_by,
+            variant_by,
+            length_by,
+            is_dynamic_int,
+            has_dynamic_length,
+            key_dyn_length,
+            val_dyn_length,
             0,
         );
 
@@ -257,16 +202,11 @@ fn generate_struct_serializer(
         // read bytes code
         quote! {
             impl binary_codec::BinaryDeserializer for #struct_name {
-                fn from_bytes(bytes: &[u8], config: Option<binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
-                    let mut bits = 0;
-                    let mut pos = 0;
-                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
-                    Self::from_bytes_internal(bytes, &mut pos, &mut bits, &mut config)
-                }
-            }
-
-            impl #struct_name {
-                pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
+                fn from_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
+                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let _p_config = config.unwrap_or(&mut _new_config);
+                    let _p_bytes = bytes;
+                    
                     #(#field_serializations)*
 
                     Ok(Self {
@@ -279,18 +219,17 @@ fn generate_struct_serializer(
         // write bytes code
         quote! {
             impl binary_codec::BinarySerializer for #struct_name {
-                fn to_bytes(&self, config: Option<binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
+                fn to_bytes(&self, config: Option<&mut binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
                     let mut bytes = Vec::new();
-                    let mut bits = 0;
-                    let mut pos = 0;
-                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
-                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, &mut config)?;
+                    Self::write_bytes(self, &mut bytes, config)?;
                     Ok(bytes)
                 }
-            }
-            
-            impl #struct_name {
-                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<(), #error_type> {
+
+                fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig>) -> Result<(), #error_type> {
+                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let _p_config = config.unwrap_or(&mut _new_config);
+                    let _p_bytes = buffer;
+
                     #(#field_serializations)*
                     Ok(())
                 }
@@ -314,7 +253,7 @@ fn generate_enum_serializer(
     // Search attributes for variant_by declarations
     for attr in ast.attrs.iter() {
         // #[no_disc_prefix] attribute
-        if attr.path().is_ident("no_disc_prefix") {
+        if attr.path().is_ident("no_discriminator") {
             no_disc_prefix = true;
         }
     }
@@ -330,7 +269,7 @@ fn generate_enum_serializer(
         } else {
             quote! {
                 let _p_disc: u8 = #disc_value;
-                binary_codec::encodings::FixedInt::write(_p_disc, _p_bytes, _p_pos, _p_bits)?;
+                binary_codec::fixed_int::FixedInt::write(_p_disc, _p_bytes, _p_config)?;
             }
         };
 
@@ -404,25 +343,19 @@ fn generate_enum_serializer(
     if read {
         quote! {
             impl binary_codec::BinaryDeserializer for #enum_name {
-                fn from_bytes(bytes: &[u8], config: Option<binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
-                    let mut pos = 0;
-                    let mut bits = 0;
-                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
-                    Self::from_bytes_internal(bytes, &mut pos, &mut bits, &mut config)
-                }
-            }
+                fn from_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
+                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let _p_config = config.unwrap_or(&mut _new_config);
+                    let _p_bytes = bytes;
 
-            impl #enum_name {
-                pub fn from_bytes_internal_with_disc(_p_disc: u8, _p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
+                    let _p_disc = _p_config.discriminator.take().unwrap_or(
+                        binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?
+                    );
+
                     match _p_disc {
                         #(#variants,)*
                         _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
                     }
-                }
-
-                pub fn from_bytes_internal(_p_bytes: &[u8], _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<Self, #error_type> {
-                    let _p_disc: u8 = binary_codec::encodings::FixedInt::read(_p_bytes, _p_pos, _p_bits)?;
-                    Self::from_bytes_internal_with_disc(_p_disc, _p_bytes, _p_pos, _p_bits, _p_config)
                 }
             }
         }
@@ -430,21 +363,21 @@ fn generate_enum_serializer(
     } else {
         quote! {
             impl binary_codec::BinarySerializer for #enum_name {
-                fn to_bytes(&self, config: Option<binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
+                fn to_bytes(&self, config: Option<&mut binary_codec::SerializerConfig>) -> Result<Vec<u8>, #error_type> {
                     let mut bytes = Vec::new();
-                    let mut pos = 0;
-                    let mut bits = 0;
-                    let mut config = config.unwrap_or_else(|| binary_codec::SerializerConfig::new());
-                    self.to_bytes_internal(&mut bytes, &mut pos, &mut bits, &mut config)?;
+                    Self::write_bytes(self, &mut bytes, config)?;
                     Ok(bytes)
                 }
-            }
 
-            impl #enum_name {
-                pub fn to_bytes_internal(&self, _p_bytes: &mut Vec<u8>, _p_pos: &mut usize, _p_bits: &mut u8, _p_config: &mut binary_codec::SerializerConfig) -> Result<(), #error_type> {
+                fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig>) -> Result<(), #error_type> {
+                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let _p_config = config.unwrap_or(&mut _new_config);
+                    let _p_bytes = buffer;
+
                     match self {
                         #(#variants)*
                     }
+
                     Ok(())
                 }
             }
@@ -467,13 +400,13 @@ fn generate_enum_field_serializations(
             field_type,
             field_ident,
             None,
+            None,
+            None,
+            None,
             false,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            false,
+            false,
+            false,
             0,
         );
 
@@ -496,14 +429,14 @@ fn generate_code_for_handling_field(
     read: bool,
     field_type: &Type,
     field_name: &syn::Ident,
-    bits_count_type: Option<u8>,
-    is_dynamic: bool,
-    dynamic_length_depth: Option<usize>,
-    length_determining_field: Option<FieldReference>,
-    variant_by_field: Option<FieldReference>,
-    toggled_by_field: Option<FieldReference>,
-    toggled_by_key: Option<String>,
-    length_by_key: Option<String>,
+    bits_count: Option<u8>,
+    toggled_by: Option<String>,
+    variant_by: Option<String>,
+    length_by: Option<String>,
+    is_dynamic_int: bool,
+    has_dynamic_length: bool,
+    key_dyn_length: bool,
+    val_dyn_length: bool,
     level: usize,
 ) -> proc_macro2::TokenStream {
     if let Type::Path(path) = field_type {
@@ -511,68 +444,64 @@ fn generate_code_for_handling_field(
 
         if let Some(ident) = path.get_ident() {
             let ident_name = ident.to_string();
-            // println!(
-            //     "Found single segment ident '{:?}: {}'",
-            //     field_name, ident_name
-            // );
 
             // Single segment without arguments
             match ident_name.as_str() {
                 "bool" => {
                     if read {
-                        quote! { let _p_val = binary_codec::serializers::read_bool(_p_bytes, _p_pos, _p_bits)?; }
+                        quote! { let _p_val = binary_codec::dynamics::read_bool(_p_bytes, _p_config)?; }
                     } else {
-                        quote! { binary_codec::serializers::write_bool(*_p_val, _p_bytes, _p_pos, _p_bits)?; }
+                        quote! { binary_codec::dynamics::write_bool(*_p_val, _p_bytes, _p_config)?; }
                     }
                 }
                 "i8" => {
-                    if let Some(bits_count) = bits_count_type.as_ref() {
+                    if let Some(bits_count) = bits_count.as_ref() {
                         if *bits_count < 1 || *bits_count > 7 {
                             panic!("Bits count should be between 1 and 7");
                         }
 
                         if read {
-                            quote! { let _p_val = binary_codec::serializers::read_small_dynamic_signed(_p_bytes, _p_pos, _p_bits, #bits_count)?; }
+                            quote! { let _p_val = binary_codec::dynamics::read_small_dynamic_signed(_p_bytes, _p_config, #bits_count)?; }
                         } else {
-                            quote! { binary_codec::serializers::write_small_dynamic_signed(*_p_val, _p_bytes, _p_pos, _p_bits, #bits_count)?; }
+                            quote! { binary_codec::dynamics::write_small_dynamic_signed(*_p_val, _p_bytes, _p_config, #bits_count)?; }
                         }
                     } else {
                         if read {
                             quote! {
-                                let _p_val = binary_codec::encodings::read_zigzag(_p_bytes, _p_pos, _p_bits)?;
+                                let _p_val = binary_codec::dynamics::read_zigzag(_p_bytes, _p_config)?;
                             }
                         } else {
                             quote! {
-                                binary_codec::encodings::write_zigzag(*_p_val, _p_bytes, _p_pos, _p_bits)?;
+                                binary_codec::dynamics::write_zigzag(*_p_val, _p_bytes, _p_config)?;
                             }
                         }
                     }
                 }
                 "u8" => {
-                    if let Some(bits_count) = bits_count_type.as_ref() {
+                    if let Some(bits_count) = bits_count.as_ref() {
                         if *bits_count < 1 || *bits_count > 7 {
                             panic!("Bits count should be between 1 and 7");
                         }
 
                         if read {
-                            quote! { let _p_val = binary_codec::serializers::read_small_dynamic_unsigned(_p_bytes, _p_pos, _p_bits, #bits_count)?; }
+                            quote! { let _p_val = binary_codec::dynamics::read_small_dynamic_unsigned(_p_bytes, _p_config, #bits_count)?; }
                         } else {
-                            quote! { binary_codec::serializers::write_small_dynamic_unsigned(*_p_val, _p_bytes, _p_pos, _p_bits, #bits_count)?; }
+                            quote! { binary_codec::dynamics::write_small_dynamic_unsigned(*_p_val, _p_bytes, _p_config, #bits_count)?; }
                         }
                     } else {
                         if read {
                             quote! {
-                                let _p_val = binary_codec::encodings::FixedInt::read(_p_bytes, _p_pos, _p_bits)?;
+                                let _p_val = binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?;
                             }
                         } else {
                             quote! {
-                                binary_codec::encodings::FixedInt::write(*_p_val, _p_bytes, _p_pos, _p_bits)?;
+                                binary_codec::fixed_int::FixedInt::write(*_p_val, _p_bytes, _p_config)?;
                             }
                         }
                     }
                 }
                 "u16" | "u32" | "u64" | "u128" => {
-                    if is_dynamic {
+                    if is_dynamic_int {
                         let dynint: proc_macro2::TokenStream = generate_dynint(read);
                         if read {
                             quote! {
@@ -588,140 +517,72 @@ fn generate_code_for_handling_field(
                     } else {
                         if read {
                             quote! {
-                                let _p_val = binary_codec::encodings::FixedInt::read(_p_bytes, _p_pos, _p_bits)?;
+                                let _p_val = binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?;
                             }
                         } else {
                             quote! {
-                                binary_codec::encodings::FixedInt::write(*_p_val, _p_bytes, _p_pos, _p_bits)?;
+                                binary_codec::fixed_int::FixedInt::write(*_p_val, _p_bytes, _p_config)?;
                             }
                         }
                     }
                 }
                 "i16" | "i32" | "i64" | "i128" => {
-                    if is_dynamic {
+                    if is_dynamic_int {
                         let dynint: proc_macro2::TokenStream = generate_dynint(read);
                         if read {
                             quote! {
                                 #dynint
-                                let _p_val: #ident = binary_codec::encodings::ZigZag::to_signed(_p_dyn);
+                                let _p_val: #ident = binary_codec::fixed_int::ZigZag::to_signed(_p_dyn);
                             }
                         } else {
                             quote! {
-                                let _p_dyn = binary_codec::encodings::ZigZag::to_unsigned(*_p_val) as u128;
+                                let _p_dyn = binary_codec::fixed_int::ZigZag::to_unsigned(*_p_val) as u128;
                                 #dynint
                             }
                         }
                     } else {
                         if read {
                             quote! {
-                                let _p_val = binary_codec::encodings::read_zigzag(_p_bytes, _p_pos, _p_bits)?;
+                                let _p_val = binary_codec::fixed_int::read_zigzag(_p_bytes, _p_config)?;
                             }
                         } else {
                             quote! {
-                                binary_codec::encodings::write_zigzag(*_p_val, _p_bytes, _p_pos, _p_bits)?;
+                                binary_codec::fixed_int::write_zigzag(*_p_val, _p_bytes, _p_config)?;
                             }
                         }
                     }
                 }
                 "String" => {
-                    // Read and write for String based on two strategies:
-                    // 1. using length_determining_field like we do for options's toggled_by. Cast the field to usize
-                    // 2. using space left if has_dynamic_len is not set
-                    // 3. Try to read space from dyn_int.
-
-                    let (len_specified, dynamic_len) = generate_dynamic_length(
-                        read,
-                        length_determining_field,
-                        dynamic_length_depth,
-                        length_by_key,
-                        quote! { _string },
-                    );
-
-                    // A string should have full _p_bytes, and start with a full byte
-                    let reset_bits = generate_reset_bits();
+                    let size_key = generate_size_key(length_by, has_dynamic_length).1;
 
                     if read {
-                        if len_specified {
-                            quote! {
-                                #reset_bits
-                                #dynamic_len
-                                let _string = &_p_bytes[*_p_pos..*_p_pos + _p_len];
-                                let _p_val = String::from_utf8(_string.to_vec()).expect("Invalid string");
-                                *_p_pos += _string.len();
-                            }
-                        } else {
-                            quote! {
-                                #reset_bits
-                                let _string = &_p_bytes[*_p_pos..];
-                                let _p_val = String::from_utf8(_string.to_vec()).expect("Invalid string");
-                                *_p_pos += _string.len();
-                            }
+                        quote! {
+                            let _p_val = binary_codec::variable::read_string(_p_bytes, #size_key, _p_config)?;
                         }
                     } else {
                         quote! {
-                            let _string = _p_val.as_bytes();
-                            #dynamic_len
-                            _p_bytes.extend_from_slice(_string);
-                            *_p_pos += _string.len();
-                            *_p_bits = 0;
+                            binary_codec::variable::write_string(_p_val, #size_key, _p_bytes, _p_config)?;
                         }
                     }
                 }
                 _ => {
-                    // Other types: try to call to_bytes() or from_bytes()
-                    // It is possible to have length determined
-                    let (len_specified, dynamic_len) = generate_dynamic_length(
-                        read,
-                        length_determining_field,
-                        dynamic_length_depth,
-                        length_by_key,
-                        quote! { _p_slice },
-                    );
+                    let size_key = generate_size_key(length_by, has_dynamic_length).1;
+
+                    let variant_code = if variant_by.is_some() {
+                        quote! { 
+                            _p_config.discriminator = _p_config.get_variant(#variant_by);
+                        }
+                    } else { quote! {} };
 
                     if read {
-                        let read_code = if let Some(variant_by) = variant_by_field {
-                            let variant_by = get_reference_accessor(variant_by, false);
-                            quote! {
-                                let _p_disc = #variant_by;
-                                let _p_val = #field_type::from_bytes_internal_with_disc(_p_disc, _p_slice, _p_pos, _p_bits, _p_config)?;
-                            }
-                        } else {
-                            quote! {
-                                let _p_val = #field_type::from_bytes_internal(_p_slice, _p_pos, _p_bits, _p_config)?;
-                            }
-                        };
-
-
-                        let handle = if len_specified {
-                            quote! {
-                                #dynamic_len
-                                let _p_slice = _p_bytes;
-                            }
-                        } else {
-                            quote! {
-                                let _p_slice = _p_bytes;
-                            }
-                        };
-
                         quote! {
-                            #handle
-                            #read_code
+                            #variant_code
+                            let _p_val = binary_codec::variable::read_object(_p_bytes, #size_key, _p_config)?;
                         }
                     } else {
-                        if len_specified {
-                            quote! {
-                                let mut _s_pos = 0;
-                                let mut _vec: Vec<u8> = Vec::new();
-                                _p_val.to_bytes_internal(&mut _vec, &mut _s_pos, _p_bits, _p_config)?;
-                                let _p_slice = &_vec;
-                                #dynamic_len
-                                _p_bytes.extend_from_slice(_p_slice);
-                                *_p_pos += _s_pos;
-                            }
-                        } else {
-                            quote! {
-                                _p_val.to_bytes_internal(_p_bytes, _p_pos, _p_bits, _p_config)?;
-                            }
+                        quote! {
+                            #variant_code
+                            binary_codec::variable::write_object(_p_val, #size_key, _p_bytes, _p_config)?;
                         }
                     }
                 }
@@ -732,11 +593,6 @@ fn generate_code_for_handling_field(
                 let ident = &path.segments[0].ident;
                 let ident_name = ident.to_string();
 
-                // println!(
-                //     "Found multi segment ident '{:?}: {}'",
-                //     field_name, ident_name
-                // );
-
                 match ident_name.as_ref() {
                     "Option" => {
                         let inner_type = get_inner_type(path).expect("Option missing inner type");
@@ -744,19 +600,19 @@ fn generate_code_for_handling_field(
                             read,
                             inner_type,
                             field_name,
-                            bits_count_type,
-                            is_dynamic,
-                            dynamic_length_depth,
-                            length_determining_field,
-                            variant_by_field,
+                            bits_count,
                             None,
-                            None,
-                            None,
+                            variant_by,
+                            length_by,
+                            is_dynamic_int,
+                            has_dynamic_length,
+                            key_dyn_length,
+                            val_dyn_length,
                             level + 1,
                         );
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
 
-                        if let Some(toggled_by) = toggled_by_key {
+                        if let Some(toggled_by) = toggled_by {
                             // If toggled_by is set, read or write it
                             let toggled_by = quote! {
                                 _p_config.get_toggle(#toggled_by).unwrap_or(false)
@@ -779,32 +635,12 @@ fn generate_code_for_handling_field(
                                     }
                                 }
                             }
-                        } else if let Some(toggled_by) = toggled_by_field {
-                            let toggled_by = get_reference_accessor(toggled_by, !read);
-                            if read {
-                                quote! {
-                                    let mut #option_name: Option<#inner_type> = None;
-                                    if #toggled_by {
-                                        #handle
-                                        #option_name = Some(_p_val);
-                                    }
-                                    let _p_val = #option_name;
-                                }
-                            } else {
-                                quote! {
-                                    if #toggled_by {
-                                        let _p_val = _p_val.as_ref().expect("Expected Some value, because toggled_by field is true");
-                                        #handle
-                                    }
-                                }
-                            }
-                        }
-                        else {
+                        } else {
                             // If space available, read it, write it if not None
                             if read {
                                 quote! {
                                     let mut #option_name: Option<#inner_type> = None;
-                                    if *_p_pos < _p_bytes.len() {
+                                    if _p_config.pos < _p_bytes.len() {
                                         #handle
                                         #option_name = Some(_p_val);
                                     }
@@ -826,29 +662,29 @@ fn generate_code_for_handling_field(
                             read,
                             inner_type,
                             field_name,
-                            bits_count_type,
-                            is_dynamic,
-                            dynamic_length_depth.map(|d| d - 1),
+                            bits_count,
                             None,
                             None,
                             None,
-                            None,
-                            None,
+                            is_dynamic_int,
+                            val_dyn_length,
+                            false,
+                            false,
                             level + 1,
                         );
 
-                        let (len_specified, dynamic_len) = generate_dynamic_length(
-                            read,
-                            length_determining_field,
-                            dynamic_length_depth,
-                            length_by_key,
-                            quote! { _p_val },
-                        );
+                        let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
 
-                        if read {
-                            if len_specified {
+                        let write_code = quote! {
+                            for _p_val in _p_val {
+                                #handle
+                            }
+                        };
+
+                        if has_size {
+                            if read {
                                 quote! {
-                                    #dynamic_len
+                                    let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
                                     let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
                                     for _ in 0.._p_len {
                                         #handle
@@ -858,19 +694,24 @@ fn generate_code_for_handling_field(
                                 }
                             } else {
                                 quote! {
+                                    let _p_len = _p_val.len();
+                                    binary_codec::utils::write_size(_p_len, #size_key, _p_bytes, _p_config)?;
+                                    #write_code
+                                }
+                            }
+                        } else {
+                            if read {
+                                quote! {
                                     let mut #vec_name = Vec::<#inner_type>::new();
-                                    while *_p_pos < _p_bytes.len() {
+                                    while _p_config.pos < _p_bytes.len() {
                                         #handle
                                         #vec_name.push(_p_val);
                                     }
                                     let _p_val = #vec_name;
                                 }
-                            }
-                        } else {
-                            quote! {
-                                #dynamic_len
-                                for _p_val in _p_val {
-                                    #handle
+                            } else {
+                                quote! {
+                                    #write_code
                                 }
                             }
                         }
@@ -878,18 +719,19 @@ fn generate_code_for_handling_field(
                     "HashMap" => {
                         let (key_type, value_type) =
                             get_two_types(path).expect("Failed to get HashMap types");
+
                         let handle_key = generate_code_for_handling_field(
                             read,
                             key_type,
                             field_name,
-                            bits_count_type,
-                            is_dynamic,
-                            dynamic_length_depth.map(|d| d - 1),
                             None,
                             None,
                             None,
                             None,
-                            None,
+                            is_dynamic_int,
+                            key_dyn_length,
+                            false,
+                            false,
                             level + 1,
                         );
 
@@ -897,29 +739,32 @@ fn generate_code_for_handling_field(
                             read,
                             value_type,
                             field_name,
-                            bits_count_type,
-                            is_dynamic,
-                            dynamic_length_depth.map(|d| d - 1),
                             None,
                             None,
                             None,
                             None,
-                            None,
+                            is_dynamic_int,
+                            val_dyn_length,
+                            false,
+                            false,
                             level + 1,
                         );
 
-                        let (len_specified, dynamic_len) = generate_dynamic_length(
-                            read,
-                            length_determining_field,
-                            dynamic_length_depth,
-                            length_by_key,
-                            quote! { _p_val },
-                        );
+                        let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
+
+                        let write_code = quote! {
+                            for (key, value) in _p_val {
+                                let _p_val = key;
+                                #handle_key
+                                let _p_val = value;
+                                #handle_value
+                            }
+                        };
 
                         if read {
-                            if len_specified {
+                            if has_size {
                                 quote! {
-                                    #dynamic_len
+                                    let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
                                     let mut _p_map = std::collections::HashMap::<#key_type, #value_type>::with_capacity(_p_len);
                                     for _ in 0.._p_len {
                                         let _p_key;
@@ -935,7 +780,7 @@ fn generate_code_for_handling_field(
                             } else {
                                 quote! {
                                     let mut _p_map = std::collections::HashMap::<#key_type, #value_type>::new();
-                                    while *_p_pos < _p_bytes.len() {
+                                    while _p_config.pos < _p_bytes.len() {
                                         let _p_key;
                                         #handle_key
                                         _p_key = _p_val;
@@ -948,13 +793,15 @@ fn generate_code_for_handling_field(
                                 }
                             }
                         } else {
-                            quote! {
-                                #dynamic_len
-                                for (key, value) in _p_val {
-                                    let _p_val = key;
-                                    #handle_key
-                                    let _p_val = value;
-                                    #handle_value
+                            if has_size {
+                                quote! {
+                                    let _p_len = _p_val.len();
+                                    binary_codec::utils::write_size(_p_len, #size_key, _p_bytes, _p_config)?;
+                                    #write_code
+                                }
+                            } else {
+                                quote! {
+                                    #write_code
                                 }
                             }
                         }
@@ -980,21 +827,19 @@ fn generate_code_for_handling_field(
             panic!("Expected literal to determine array length");
         };
 
-        // println!("Found array '{:?}' with length: {}", field_name, len);
-
         let array_type = &array.elem;
         let handle = generate_code_for_handling_field(
             read,
             array_type,
             field_name,
-            bits_count_type,
-            is_dynamic,
-            dynamic_length_depth,
+            bits_count,
             None,
             None,
             None,
-            None,
-            None,
+            is_dynamic_int,
+            val_dyn_length,
+            false,
+            false,
             level + 1,
         );
 
@@ -1029,74 +874,55 @@ fn generate_error_type(read: bool) -> proc_macro2::TokenStream {
     }
 }
 
+fn generate_size_key(length_by: Option<String>, has_dynamic_length: bool) -> (bool, proc_macro2::TokenStream) {
+    if let Some(length_by) = length_by.as_ref() {
+        (true, quote! { Some(#length_by) })
+    } else if has_dynamic_length {
+        (true, quote! { Some("__dynamic") })
+    } else {
+        (false, quote! { None })
+    }
+}
+
 fn get_string_value_from_attribute(
-    attribute_name: &str,
-    attr: &Attribute,
-    field_name: &syn::Ident,
-) -> String {
-    if let syn::Meta::NameValue(name_value) = &attr.meta {
-        if let syn::Expr::Lit(lit_expr) = &name_value.value {
-            if let Lit::Str(lit_str) = &lit_expr.lit {
-                lit_str.value()
-            } else {
-                panic!(
-                    "Expected a string for {} above '{}'",
-                    attribute_name, field_name
-                );
-            }
-        } else {
-            panic!(
-                "Expected field name for {} above '{}'",
-                attribute_name, field_name
-            );
-        }
-    } else {
-        panic!(
-            "Expected '{}' {} to specify field name",
-            attribute_name, field_name
-        );
-    }
-}
-
-fn get_int_value_from_attribute(
-    attribute_name: &str,
-    attr: &Attribute,
-    field_name: &syn::Ident,
-) -> i32 {
-    if let syn::Meta::NameValue(name_value) = &attr.meta {
-        if let syn::Expr::Lit(lit_expr) = &name_value.value {
-            if let Lit::Int(lit_str) = &lit_expr.lit {
-                lit_str.base10_parse().expect("Not a valid int value")
-            } else {
-                panic!(
-                    "Expected a int for {} above '{}'",
-                    attribute_name, field_name
-                );
-            }
-        } else {
-            panic!(
-                "Expected field name for {} above '{}'",
-                attribute_name, field_name
-            );
-        }
-    } else {
-        panic!(
-            "Expected '{}' {} to specify field name",
-            attribute_name, field_name
-        );
-    }
-}
-
-fn get_int_value_from_attribute_2(attr: &Attribute) -> Option<usize> {
+    attr: &Attribute
+) -> Option<String> {
     match &attr.meta {
         syn::Meta::Path(_) => {
             None
         }
         syn::Meta::List(list_value) => {
-            // #[dynamic_len(value)]
+            // #[myattribute("value")]
             for token in list_value.tokens.clone().into_iter() {
                 if let proc_macro2::TokenTree::Literal(lit) = token {
-                    if let Ok(val) = lit.to_string().parse::<usize>() {
+                    return Some(lit.to_string().trim_matches('"').to_string());
+                }
+            }
+
+            None
+        }
+        syn::Meta::NameValue(name_value) => {
+            if let syn::Expr::Lit(lit_expr) = &name_value.value {
+                if let Lit::Str(lit_str) = &lit_expr.lit {
+                    return Some(lit_str.value());
+                }
+            }
+
+            None
+        }
+    }
+}
+
+fn get_int_value_from_attribute(attr: &Attribute) -> Option<i32> {
+    match &attr.meta {
+        syn::Meta::Path(_) => {
+            None
+        }
+        syn::Meta::List(list_value) => {
+            // #[myattribute(value)]
+            for token in list_value.tokens.clone().into_iter() {
+                if let proc_macro2::TokenTree::Literal(lit) = token {
+                    if let Ok(val) = lit.to_string().parse::<i32>() {
                         return Some(val);
                     }
                 }
@@ -1114,49 +940,6 @@ fn get_int_value_from_attribute_2(attr: &Attribute) -> Option<usize> {
             None
         }
     }
-}
-
-fn get_field_name_from_attribute<'a>(
-    attribute_name: &str,
-    attr: &Attribute,
-    fields: &'a Fields,
-    field_name: &syn::Ident,
-) -> (&'a syn::Ident, Option<i32>) {
-    let mut field_name = get_string_value_from_attribute(attribute_name, attr, field_name);
-    let mut index: Option<i32> = None;
-
-    if field_name.starts_with('!') {
-        // Special case for toggled_by = "!field_name", meaning the negation of a boolean field
-        field_name = field_name.trim_start_matches('!').to_string();
-        index = Some(-1);
-    }
-
-    let field_name = if field_name.contains('.') {
-        let parts: Vec<&str> = field_name.split('.').collect();
-        if parts.len() != 2 {
-            panic!(
-                "Invalid field name '{}' for attribute '{}', expected 'field_name.index'",
-                field_name, attribute_name
-            );
-        }
-
-        index = parts[1].parse().ok();
-        parts[0].to_string()
-    } else {
-        field_name
-    };
-
-    let determining_field = fields
-        .iter()
-        .find(|f| f.ident.as_ref().is_some_and(|i| i == &field_name))
-        .expect(&format!("Referenced field '{}' not found", field_name));
-
-    let field = determining_field.ident.as_ref().expect(&format!(
-        "Referenced field '{}' has no name, which is not supported",
-        field_name
-    ));
-
-    (field, index)
 }
 
 fn get_inner_type(path: &syn::Path) -> Option<&syn::Type> {
@@ -1193,135 +976,14 @@ fn get_two_types(path: &syn::Path) -> Option<(&syn::Type, &syn::Type)> {
     None
 }
 
-fn get_reference_accessor(field_reference: FieldReference, is_self: bool) -> proc_macro2::TokenStream {
-    let name = field_reference.0;
-    if let Some(index) = field_reference.1 {
-        if index == -1 {
-            if is_self {
-                quote! { !self.#name }
-            } else {
-                quote! { !#name }
-            }
-        } else {
-            let index = index as usize;
-            if is_self {
-                quote! { self.#name[#index] }
-            } else {
-                quote! { #name[#index] }
-            }
-        }
-    } else if is_self {
-        quote! { self.#name }
-    } else {
-        quote! { #name }
-    }
-}
-
 fn generate_dynint(read: bool) -> proc_macro2::TokenStream {
     if read {
         quote! {
-            let (_p_dyn, _bytes_read) = binary_codec::dyn_int::read_from_slice(&_p_bytes[*_p_pos..])?;
-            *_p_pos += _bytes_read;
-            *_p_bits = 0;
+            let _p_dyn = binary_codec::dyn_int::read_dynint(_p_bytes, _p_config)?;
         }
     } else {
         quote! {
-            let _p_enc = binary_codec::dyn_int::encode(_p_dyn);
-            _p_bytes.extend_from_slice(&_p_enc);
-            *_p_pos += _p_enc.len();
-            *_p_bits = 0;
+            binary_codec::dyn_int::write_dynint(_p_dyn, _p_bytes, _p_config)?;
         }
-    }
-}
-
-/**
- * Generate code writing or reading dynamic integer, or reading and validating length determining field in struct
- * If the length is specified this produces:
- * read:
- * let _p_len : usize = ...;
- */
-fn generate_dynamic_length(
-    read: bool,
-    length_determining_field: Option<(&syn::Ident, Option<i32>)>,
-    dynamic_length_depth: Option<usize>,
-    length_by_key: Option<String>,
-    item: proc_macro2::TokenStream,
-) -> (bool, proc_macro2::TokenStream) {
-    let dynint = generate_dynint(read);
-    if read {
-        if let Some(length_determining_field) = length_determining_field {
-            let length_determining_field = get_reference_accessor(length_determining_field, false);
-            (
-                true,
-                quote! {
-                    let _p_len = #length_determining_field as usize;
-                },
-            )
-        } else if let Some(length_by_key) = length_by_key {
-            (
-                true,
-                quote! {
-                    let _p_len = _p_config.get_length(#length_by_key)
-                        .ok_or(binary_codec::DeserializationError::MissingLengthByKey(#length_by_key.to_string()))?;
-                },
-            )
-        } else {
-            if dynamic_length_depth.is_some_and(|v| v > 0) {
-                (
-                    true,
-                    quote! {
-                        #dynint
-                        let _p_len = _p_dyn as usize;
-                    },
-                )
-            } else {
-                (false, quote! {})
-            }
-        }
-    } else {
-        if let Some(length_determining_field) = length_determining_field {
-            let length_determining_field = get_reference_accessor(length_determining_field, true);
-            (
-                true,
-                quote! {
-                    let expected_len = #length_determining_field as usize;
-                    if #item.len() != expected_len {
-                        return Err(binary_codec::SerializationError::UnexpectedLength(expected_len, #item.len()));
-                    }
-                },
-            )
-        } else if let Some(length_by_key) = length_by_key {
-            (
-                true,
-                quote! {
-                    let expected_len = _p_config.get_length(#length_by_key)
-                        .ok_or(binary_codec::SerializationError::MissingLengthByKey(#length_by_key.to_string()))?;
-                    if #item.len() != expected_len {
-                        return Err(binary_codec::SerializationError::UnexpectedLength(expected_len, #item.len()));
-                    }
-                },
-            )
-        } else {
-            if dynamic_length_depth.is_some_and(|v| v > 0) {
-                (
-                    true,
-                    quote! {
-                        let _p_dyn = #item.len() as u128;
-                        #dynint
-                    },
-                )
-            } else {
-                (false, quote! {})
-            }
-        }
-    }
-}
-
-fn generate_reset_bits() -> proc_macro2::TokenStream {
-    quote! {
-        if *_p_bits != 0 && *_p_pos == 0 {
-            *_p_pos += 1;
-        }
-        *_p_bits = 0;
     }
 }

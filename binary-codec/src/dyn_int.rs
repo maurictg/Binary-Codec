@@ -1,4 +1,4 @@
-use crate::DeserializationError;
+use crate::{DeserializationError, SerializationError, SerializerConfig};
 
 /// Gives encoded size in bytes
 ///
@@ -66,6 +66,21 @@ pub fn read_from_slice(data: &[u8]) -> Result<(u128, usize), DeserializationErro
 
         idx += 1;
     }
+}
+
+pub fn read_dynint(bytes: &[u8], config: &mut SerializerConfig) -> Result<u128, DeserializationError> {
+    config.reset_bits(true);
+    let (value, read_bytes) = read_from_slice(&bytes[config.pos..])?;
+    config.pos += read_bytes;
+    return Ok(value);
+}
+
+pub fn write_dynint(val: u128, bytes: &mut Vec<u8>, config: &mut SerializerConfig) -> Result<(), SerializationError> {
+    config.reset_bits(false);
+    let data = encode(val);
+    bytes.extend_from_slice(&data);
+    config.pos += data.len();
+    return Ok(());
 }
 
 #[cfg(test)]
