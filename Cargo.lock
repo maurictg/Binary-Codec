@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "binary-codec"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "binary-codec-derive 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
