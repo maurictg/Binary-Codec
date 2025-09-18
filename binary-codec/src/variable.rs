@@ -53,3 +53,38 @@ pub fn write_object<T>(value: &T, size_key: Option<&str>, buffer: &mut Vec<u8>, 
         value.write_bytes(buffer, Some(config))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{BinaryDeserializer, dynamics::read_small_dynamic_unsigned, fixed_int::FixedInt};
+
+    use super::*;
+
+    struct TestObj {
+        nr: u16
+    }
+
+    impl BinaryDeserializer for TestObj {
+        fn from_bytes(bytes: &[u8], config: Option<&mut SerializerConfig>) -> Result<Self, DeserializationError> {
+            let config = config.unwrap();
+            let nr = FixedInt::read(bytes, config)?;
+            Ok(TestObj { nr })
+        }
+    }
+
+    #[test]
+    fn test_read_number_object_after_reading_few_bits() {
+        let bytes = vec![0b0000_0011, 0, 7];
+        let mut config = SerializerConfig::new();
+
+        let small_nr = read_small_dynamic_unsigned(&bytes, &mut config, 2).unwrap();
+        assert_eq!(small_nr, 3);
+        assert_eq!(config.bits, 2);
+        assert_eq!(config.pos, 0);
+
+        let obj = read_object::<TestObj>(&bytes, None, &mut config).unwrap();
+        assert_eq!(obj.nr, 7);
+        assert_eq!(config.bits, 0);
+        assert_eq!(config.pos, 3);
+    }
+}

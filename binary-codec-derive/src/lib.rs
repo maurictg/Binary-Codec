@@ -348,9 +348,11 @@ fn generate_enum_serializer(
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
 
-                    let _p_disc = _p_config.discriminator.take().unwrap_or(
+                    let _p_disc = if let Some(disc) = _p_config.discriminator.take() {
+                        disc
+                    } else {
                         binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?
-                    );
+                    };
 
                     match _p_disc {
                         #(#variants,)*
