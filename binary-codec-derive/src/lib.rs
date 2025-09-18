@@ -640,7 +640,7 @@ fn generate_code_for_handling_field(
                             if read {
                                 quote! {
                                     let mut #option_name: Option<#inner_type> = None;
-                                    if _p_config.pos < _p_bytes.len() {
+                                    if _p_config.next_reset_bits_pos() < _p_bytes.len() {
                                         #handle
                                         #option_name = Some(_p_val);
                                     }
@@ -703,7 +703,7 @@ fn generate_code_for_handling_field(
                             if read {
                                 quote! {
                                     let mut #vec_name = Vec::<#inner_type>::new();
-                                    while _p_config.pos < _p_bytes.len() {
+                                    while _p_config.next_reset_bits_pos() < _p_bytes.len() {
                                         #handle
                                         #vec_name.push(_p_val);
                                     }
@@ -780,7 +780,7 @@ fn generate_code_for_handling_field(
                             } else {
                                 quote! {
                                     let mut _p_map = std::collections::HashMap::<#key_type, #value_type>::new();
-                                    while _p_config.pos < _p_bytes.len() {
+                                    while _p_config.next_reset_bits_pos() < _p_bytes.len() {
                                         let _p_key;
                                         #handle_key
                                         _p_key = _p_val;

@@ -22,6 +22,14 @@ impl SerializerConfig {
         }
     }
 
+    pub fn next_reset_bits_pos(&self) -> usize {
+        if self.bits == 0 {
+            self.pos
+        } else {
+            self.pos + 1
+        }
+    }
+
     pub fn reset_bits(&mut self, is_read: bool) {
         if self.bits != 0 && is_read {
             self.pos += 1;
