@@ -106,7 +106,7 @@ fn generate_struct_serializer(
                 Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
                 Some("length_by") => length_by = get_string_value_from_attribute(attr),
                 Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
-                _ => panic!("Unknown attribute {} on field: `{}`", field_name, attr.path().into_token_stream()),
+                _ => {}
                 // None => continue
             }
         }
