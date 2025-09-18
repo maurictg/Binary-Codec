@@ -1,6 +1,6 @@
 [package]
 name = "binary-codec"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 license = "MIT"
 homepage = "https://github.com/maurictg/Binary-Codec"
@@ -12,4 +12,4 @@ keywords = ["binary", "codec", "serialization", "deserialization"]
 publish = true
 
 [dependencies]
-binary-codec-derive = "0.2.3"
+binary-codec-derive = "0.2.4"
