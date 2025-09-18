@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use quote::{ToTokens, format_ident, quote};
+use quote::{format_ident, quote};
 use syn::{
     parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, Data, DeriveInput, Fields,
     Lit, PathArguments, Type,

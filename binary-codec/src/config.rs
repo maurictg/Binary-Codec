@@ -43,6 +43,11 @@ impl SerializerConfig {
     }
 
     pub fn get_toggle(&self, key: &str) -> Option<bool> {
+        if key.starts_with('!') {
+            let key = &key[1..];
+            return self.toggle_keys.get(key).map(|v| !*v);
+        }
+        
         self.toggle_keys.get(key).copied()
     }
 
