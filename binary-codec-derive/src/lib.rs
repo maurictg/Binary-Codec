@@ -263,23 +263,16 @@ fn generate_enum_serializer(
         let var_ident = &variant.ident;
         let disc_value = i as u8;
 
-        if no_disc_prefix {
-            // If no discriminator, just return 0
-            quote! {
-                Self::#var_ident { .. } | Self::#var_ident(_) | Self::#var_ident => 0
-            }
-        } else {
-            match &variant.fields {
-                Fields::Unit => quote! {
-                    Self::#var_ident => #disc_value
-                },
-                Fields::Unnamed(_) => quote! {
-                    Self::#var_ident(..) => #disc_value
-                },
-                Fields::Named(_) => quote! {
-                    Self::#var_ident { .. } => #disc_value
-                },
-            }
+        match &variant.fields {
+            Fields::Unit => quote! {
+                Self::#var_ident => #disc_value
+            },
+            Fields::Unnamed(_) => quote! {
+                Self::#var_ident(..) => #disc_value
+            },
+            Fields::Named(_) => quote! {
+                Self::#var_ident { .. } => #disc_value
+            },
         }
     });
 

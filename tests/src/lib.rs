@@ -48,6 +48,8 @@ struct ExampleObject {
 enum Nested {
     A(u32),
     B(u64),
+    C,
+    D { x: u32 }
 }
 
 
@@ -81,7 +83,7 @@ mod tests {
             }
         };
 
-        let x = Nested::B(5);
+        let x = Nested::D { x: 5 };
         let discr: u8 = x.get_discriminator();
 
         println!("DISC: {}", discr);
