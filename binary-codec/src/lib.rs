@@ -8,6 +8,9 @@ pub enum SerializationError {
 
     /// Missing runtime length key
     MissingLengthByKey(String),
+
+    /// Validation did fail for the data
+    InvalidData(String),
 }
 
 #[derive(Debug)]
@@ -23,6 +26,9 @@ pub enum DeserializationError {
 
     /// Missing runtime length key
     MissingLengthByKey(String),
+
+    /// Validation did fail for the data
+    InvalidData(String),
 }
 
 pub trait BinarySerializer {
