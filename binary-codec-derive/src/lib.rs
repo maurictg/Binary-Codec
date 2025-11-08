@@ -258,8 +258,33 @@ fn generate_enum_serializer(
         }
     }
 
+    // Create discriminant getter
+    let disc_variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
+        let var_ident = &variant.ident;
+        let disc_value = i as u8;
+
+        if no_disc_prefix {
+            // If no discriminator, just return 0
+            quote! {
+                Self::#var_ident { .. } | Self::#var_ident(_) | Self::#var_ident => 0
+            }
+        } else {
+            match &variant.fields {
+                Fields::Unit => quote! {
+                    Self::#var_ident => #disc_value
+                },
+                Fields::Unnamed(_) => quote! {
+                    Self::#var_ident(..) => #disc_value
+                },
+                Fields::Named(_) => quote! {
+                    Self::#var_ident { .. } => #disc_value
+                },
+            }
+        }
+    });
+
     // Assign discriminant values starting from 0
-    let variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
+    let serialization_variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
         let var_ident = &variant.ident;
         let disc_value = i as u8; // Could be changed to u16/u32 if needed
         let fields = &variant.fields;
@@ -355,7 +380,7 @@ fn generate_enum_serializer(
                     };
 
                     match _p_disc {
-                        #(#variants,)*
+                        #(#serialization_variants,)*
                         _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
                     }
                 }
@@ -377,10 +402,18 @@ fn generate_enum_serializer(
                     let _p_bytes = buffer;
 
                     match self {
-                        #(#variants)*
+                        #(#serialization_variants)*
                     }
 
                     Ok(())
+                }
+            }
+
+            impl #enum_name {
+                fn get_discriminator(&self) -> u8 {
+                    match self {
+                        #(#disc_variants,)*
+                    }
                 }
             }
         }

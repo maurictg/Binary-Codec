@@ -81,6 +81,11 @@ mod tests {
             }
         };
 
+        let x = Nested::B(5);
+        let discr: u8 = x.get_discriminator();
+
+        println!("DISC: {}", discr);
+
         let bytes = o.to_bytes(None).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
 
