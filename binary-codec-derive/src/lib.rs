@@ -403,7 +403,7 @@ fn generate_enum_serializer(
             }
 
             impl #enum_name {
-                fn get_discriminator(&self) -> u8 {
+                pub fn get_discriminator(&self) -> u8 {
                     match self {
                         #(#disc_variants,)*
                     }
