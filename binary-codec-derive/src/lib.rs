@@ -423,18 +423,43 @@ fn generate_enum_field_serializations(
         let field_type = &f.ty;
         let field_ident = &idents[i];
 
+        // Extract attributes from enum field (same attrs supported for struct fields)
+        let mut toggled_by = None;
+        let mut variant_by = None;
+        let mut length_by = None;
+        let mut is_dynamic_int = false;
+        let mut has_dynamic_length = false;
+        let mut bits_count = None;
+        let mut key_dyn_length = false;
+        let mut val_dyn_length = false;
+
+        for attr in f.attrs.iter() {
+            let ident = attr.path().get_ident().map(|i| i.clone().to_string());
+            match ident.as_deref() {
+                Some("dyn_int") => is_dynamic_int = true,
+                Some("dyn_length") => has_dynamic_length = true,
+                Some("key_dyn_length") => key_dyn_length = true,
+                Some("val_dyn_length") => val_dyn_length = true,
+                Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
+                Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
+                Some("length_by") => length_by = get_string_value_from_attribute(attr),
+                Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
+                _ => {}
+            }
+        }
+
         let handle_field = generate_code_for_handling_field(
             read,
             field_type,
             field_ident,
-            None,
-            None,
-            None,
-            None,
-            false,
-            false,
-            false,
-            false,
+            bits_count,
+            toggled_by,
+            variant_by,
+            length_by,
+            is_dynamic_int,
+            has_dynamic_length,
+            key_dyn_length,
+            val_dyn_length,
             0,
         );
 
