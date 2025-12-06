@@ -1,13 +1,27 @@
-use crate::{DeserializationError, SerializationError, SerializerConfig, dyn_int::{read_dynint, write_dynint}};
+use crate::{
+    DeserializationError,
+    SerializationError,
+    SerializerConfig,
+    dyn_int::{read_dynint, write_dynint}
+};
 
-pub fn ensure_size(config: &SerializerConfig, bytes: &[u8], required: usize) -> Result<bool, DeserializationError> {
+pub fn ensure_size<T : Clone>(
+    config: &SerializerConfig<T>,
+    bytes: &[u8],
+    required: usize
+) -> Result<bool, DeserializationError> {
     if config.pos + required > bytes.len() {
         return Err(DeserializationError::NotEnoughBytes(config.pos + required - bytes.len()));
     }
     Ok(config.pos + required == bytes.len())
 }
 
-pub fn slice<'a>(config: &mut SerializerConfig, bytes: &'a [u8], length: usize, increment: bool) -> Result<&'a [u8], DeserializationError> {
+pub fn slice<'a, T : Clone>(
+    config: &mut SerializerConfig<T>,
+    bytes: &'a [u8],
+    length: usize,
+    increment: bool
+) -> Result<&'a [u8], DeserializationError> {
     ensure_size(config, bytes, length)?;
     let slice = &bytes[config.pos..config.pos + length];
     if increment {
@@ -16,9 +30,12 @@ pub fn slice<'a>(config: &mut SerializerConfig, bytes: &'a [u8], length: usize, 
     Ok(slice)
 }
 
-pub fn get_read_size<'a>(bytes: &'a [u8], size_key: Option<&str>, config: &mut SerializerConfig) -> Result<usize, DeserializationError> {
+pub fn get_read_size<'a, T : Clone>(
+    bytes: &'a [u8],
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<T>
+) -> Result<usize, DeserializationError> {
     let size = if let Some(size_key) = size_key {
-        // Special case: dynamic length prefix
         if size_key == "__dynamic" {
             return read_dynint(bytes, config).map(|v| v as usize);
         }
@@ -32,9 +49,13 @@ pub fn get_read_size<'a>(bytes: &'a [u8], size_key: Option<&str>, config: &mut S
     Ok(size)
 }
 
-pub fn write_size(size: usize, size_key: Option<&str>, buffer: &mut Vec<u8>, config: &mut SerializerConfig) -> Result<(), SerializationError> {
+pub fn write_size<T : Clone>(
+    size: usize,
+    size_key: Option<&str>,
+    buffer: &mut Vec<u8>,
+    config: &mut SerializerConfig<T>
+) -> Result<(), SerializationError> {
     if let Some(size_key) = size_key {
-        // Special case: dynamic length prefix
         if size_key == "__dynamic" {
             return write_dynint(size as u128, buffer, config);
         }

@@ -88,10 +88,10 @@ mod tests {
 
         println!("DISC: {}", discr);
 
-        let bytes = o.to_bytes(None).unwrap();
+        let bytes = o.to_bytes::<()>(None).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
 
-        let o2 = ExampleObject::from_bytes(&bytes, None).unwrap();
+        let o2 = ExampleObject::from_bytes::<()>(&bytes, None).unwrap();
 
         assert_eq!(o, o2);
     }

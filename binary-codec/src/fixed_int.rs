@@ -1,9 +1,12 @@
-use crate::{DeserializationError, SerializationError, SerializerConfig, utils::{ensure_size, slice}};
+use crate::{
+    DeserializationError, SerializationError, SerializerConfig,
+    utils::{ensure_size, slice},
+};
 
-pub fn write_zigzag<T, const S: usize>(
+pub fn write_zigzag<T, const S: usize, U : Clone>(
     val: T,
     bytes: &mut Vec<u8>,
-    config: &mut SerializerConfig
+    config: &mut SerializerConfig<U>,
 ) -> Result<(), SerializationError>
 where
     T: ZigZag,
@@ -13,9 +16,9 @@ where
     encoded.write(bytes, config)
 }
 
-pub fn read_zigzag<T, const S: usize>(
+pub fn read_zigzag<T, const S: usize, U : Clone>(
     bytes: &[u8],
-    config: &mut SerializerConfig
+    config: &mut SerializerConfig<U>,
 ) -> Result<T, DeserializationError>
 where
     T: ZigZag,
@@ -26,14 +29,14 @@ where
 }
 
 // Fixed int implementations
-pub trait FixedInt<const S: usize> : Sized {    
+pub trait FixedInt<const S: usize>: Sized {
     fn serialize(self) -> [u8; S];
     fn deserialize(bytes: &[u8]) -> Self;
 
-    fn write(
+    fn write<U : Clone>(
         self,
         bytes: &mut Vec<u8>,
-        config: &mut SerializerConfig
+        config: &mut SerializerConfig<U>,
     ) -> Result<(), SerializationError> {
         config.reset_bits(false);
         bytes.extend_from_slice(&self.serialize());
@@ -41,9 +44,9 @@ pub trait FixedInt<const S: usize> : Sized {
         Ok(())
     }
 
-    fn read(
+    fn read<U : Clone>(
         bytes: &[u8],
-        config: &mut SerializerConfig
+        config: &mut SerializerConfig<U>,
     ) -> Result<Self, DeserializationError> {
         config.reset_bits(true);
         ensure_size(config, bytes, S)?;
@@ -57,7 +60,9 @@ impl FixedInt<1> for u8 {
     }
 
     fn deserialize(bytes: &[u8]) -> Self {
-        u8::from_be_bytes(bytes.try_into().unwrap()).try_into().unwrap()
+        u8::from_be_bytes(bytes.try_into().unwrap())
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -67,7 +72,9 @@ impl FixedInt<2> for u16 {
     }
 
     fn deserialize(bytes: &[u8]) -> Self {
-        u16::from_be_bytes(bytes.try_into().unwrap()).try_into().unwrap()
+        u16::from_be_bytes(bytes.try_into().unwrap())
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -77,7 +84,9 @@ impl FixedInt<4> for u32 {
     }
 
     fn deserialize(bytes: &[u8]) -> Self {
-        u32::from_be_bytes(bytes.try_into().unwrap()).try_into().unwrap()
+        u32::from_be_bytes(bytes.try_into().unwrap())
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -87,7 +96,9 @@ impl FixedInt<8> for u64 {
     }
 
     fn deserialize(bytes: &[u8]) -> Self {
-        u64::from_be_bytes(bytes.try_into().unwrap()).try_into().unwrap()
+        u64::from_be_bytes(bytes.try_into().unwrap())
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -97,7 +108,9 @@ impl FixedInt<16> for u128 {
     }
 
     fn deserialize(bytes: &[u8]) -> Self {
-        u128::from_be_bytes(bytes.try_into().unwrap()).try_into().unwrap()
+        u128::from_be_bytes(bytes.try_into().unwrap())
+            .try_into()
+            .unwrap()
     }
 }
 
@@ -175,10 +188,34 @@ mod tests {
         };
     }
 
-    zigzag_test!(zigzag_i16_pos, i16, u16, 0b0000_0000_0000_0010, 0b0000_0000_0000_0100);
-    zigzag_test!(zigzag_i16_neg, i16, u16, -0b0000_0000_0000_0010, 0b0000_0000_0000_0011);
-    zigzag_test!(zigzag_i32_pos, i32, u32, 0b0000_0000_0000_0000_0000_0000_0000_0010, 0b0000_0000_0000_0000_0000_0000_0000_0100);
-    zigzag_test!(zigzag_i32_neg, i32, u32, -0b0000_0000_0000_0000_0000_0000_0000_0010, 0b0000_0000_0000_0000_0000_0000_0000_0011);
+    zigzag_test!(
+        zigzag_i16_pos,
+        i16,
+        u16,
+        0b0000_0000_0000_0010,
+        0b0000_0000_0000_0100
+    );
+    zigzag_test!(
+        zigzag_i16_neg,
+        i16,
+        u16,
+        -0b0000_0000_0000_0010,
+        0b0000_0000_0000_0011
+    );
+    zigzag_test!(
+        zigzag_i32_pos,
+        i32,
+        u32,
+        0b0000_0000_0000_0000_0000_0000_0000_0010,
+        0b0000_0000_0000_0000_0000_0000_0000_0100
+    );
+    zigzag_test!(
+        zigzag_i32_neg,
+        i32,
+        u32,
+        -0b0000_0000_0000_0000_0000_0000_0000_0010,
+        0b0000_0000_0000_0000_0000_0000_0000_0011
+    );
     zigzag_test!(zigzag_i64_pos, i64, u64, 0b10, 0b100);
     zigzag_test!(zigzag_i64_neg, i64, u64, -0b10, 0b11);
     zigzag_test!(zigzag_i128_pos, i128, u128, 0b10, 0b100);
@@ -192,45 +229,59 @@ mod tests {
                 let serialized = val.serialize();
                 assert_eq!(serialized, $bytes, "FixedInt serialize failed for {}", val);
                 let deserialized = <$ty>::deserialize(&serialized);
-                assert_eq!(deserialized, val, "FixedInt deserialize failed for {:?}", serialized);
+                assert_eq!(
+                    deserialized, val,
+                    "FixedInt deserialize failed for {:?}",
+                    serialized
+                );
             }
         };
     }
 
     fixedint_test!(fixedint_u16, u16, 0b1010_1010_1010_1010, [0b1010_1010; 2]);
-    fixedint_test!(fixedint_u32, u32, 0b1010_1010_1010_1010_1010_1010_1010_1010, [0b1010_1010; 4]);
-    fixedint_test!(fixedint_u64, u64, 0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010, [0b1010_1010; 8]);
+    fixedint_test!(
+        fixedint_u32,
+        u32,
+        0b1010_1010_1010_1010_1010_1010_1010_1010,
+        [0b1010_1010; 4]
+    );
+    fixedint_test!(
+        fixedint_u64,
+        u64,
+        0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010,
+        [0b1010_1010; 8]
+    );
     fixedint_test!(fixedint_u128, u128, 0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010, [0b1010_1010; 16]);
 
     #[test]
     fn test_write_read_zigzag_i32() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::new(None);
         let val: i32 = -123;
-        write_zigzag::<i32, 4>(val, &mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new(None);
-        let decoded = read_zigzag::<i32, 4>(&bytes, &mut config).unwrap();
+        write_zigzag::<i32, 4, ()>(val, &mut bytes, &mut config).unwrap();
+        let mut config = SerializerConfig::new(None);
+        let decoded = read_zigzag::<i32, 4, ()>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
 
     #[test]
     fn test_write_read_zigzag_i64() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::new(None);
         let val: i64 = 456789;
-        write_zigzag::<i64, 8>(val, &mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new(None);
-        let decoded = read_zigzag::<i64, 8>(&bytes, &mut config).unwrap();
+        write_zigzag::<i64, 8, ()>(val, &mut bytes, &mut config).unwrap();
+        let mut config = SerializerConfig::new(None);
+        let decoded = read_zigzag::<i64, 8, ()>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
 
     #[test]
     fn test_write_read_fixedint_u32() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::<()>::new(None);
         let val: u32 = 0b1010_1010_1010_1010_1010_1010_1010_1010;
         val.write(&mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::<()>::new(None);
         let decoded = u32::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -238,10 +289,10 @@ mod tests {
     #[test]
     fn test_write_read_fixedint_u128() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::<()>::new(None);
         let val: u128 = 0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010;
         val.write(&mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::<()>::new(None);
         let decoded = u128::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -249,7 +300,7 @@ mod tests {
     #[test]
     fn test_read_fixedint_with_offset_bits() {
         let bytes = [0b0101_0101, 7];
-        let mut config= SerializerConfig::new(None);
+        let mut config = SerializerConfig::<()>::new(None);
         config.bits = 4;
         let decoded = u8::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, 7);

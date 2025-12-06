@@ -68,20 +68,28 @@ pub fn read_from_slice(data: &[u8]) -> Result<(u128, usize), DeserializationErro
     }
 }
 
-pub fn read_dynint(bytes: &[u8], config: &mut SerializerConfig) -> Result<u128, DeserializationError> {
+pub fn read_dynint<T : Clone>(
+    bytes: &[u8],
+    config: &mut SerializerConfig<T>
+) -> Result<u128, DeserializationError> {
     config.reset_bits(true);
     let (value, read_bytes) = read_from_slice(&bytes[config.pos..])?;
     config.pos += read_bytes;
-    return Ok(value);
+    Ok(value)
 }
 
-pub fn write_dynint(val: u128, bytes: &mut Vec<u8>, config: &mut SerializerConfig) -> Result<(), SerializationError> {
+pub fn write_dynint<T : Clone>(
+    val: u128,
+    bytes: &mut Vec<u8>,
+    config: &mut SerializerConfig<T>
+) -> Result<(), SerializationError> {
     config.reset_bits(false);
     let data = encode(val);
     bytes.extend_from_slice(&data);
     config.pos += data.len();
-    return Ok(());
+    Ok(())
 }
+
 
 #[cfg(test)]
 mod test {

@@ -32,12 +32,12 @@ pub enum DeserializationError {
 }
 
 pub trait BinarySerializer {
-    fn to_bytes(&self, config: Option<&mut SerializerConfig>) -> Result<Vec<u8>, SerializationError>;
-    fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut SerializerConfig>) -> Result<(), SerializationError>;
+    fn to_bytes<T : Clone>(&self, config: Option<&mut SerializerConfig<T>>) -> Result<Vec<u8>, SerializationError>;
+    fn write_bytes<T : Clone>(&self, buffer: &mut Vec<u8>, config: Option<&mut SerializerConfig<T>>) -> Result<(), SerializationError>;
 }
 
 pub trait BinaryDeserializer : Sized {
-    fn from_bytes(bytes: &[u8], config: Option<&mut SerializerConfig>) -> Result<Self, DeserializationError>;
+    fn from_bytes<T : Clone>(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError>;
 }
 
 mod config;

@@ -1,7 +1,7 @@
 use std::{collections::HashMap};
 
 #[derive(Clone, Debug)]
-pub struct SerializerConfig<T = ()> where T : Clone + std::fmt::Debug {
+pub struct SerializerConfig<T = ()> where T: Clone {
     toggle_keys: HashMap<String, bool>,
     length_keys: HashMap<String, usize>,
     variant_keys: HashMap<String, u8>,
@@ -11,7 +11,7 @@ pub struct SerializerConfig<T = ()> where T : Clone + std::fmt::Debug {
     pub data: Option<T>
 }
 
-impl<T> SerializerConfig<T> where T : Clone + std::fmt::Debug {
+impl<T : Clone> SerializerConfig<T> {
     pub fn new(data: Option<T>) -> Self {
         Self {
             toggle_keys: HashMap::new(),
