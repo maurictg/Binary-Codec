@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
 use binary_codec_derive::{FromBytes, ToBytes};
-use binary_codec::BinarySerializer;
-use binary_codec::BinaryDeserializer;
 // mod out;
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -57,7 +55,7 @@ enum Nested {
 mod tests {
     use std::collections::HashMap;
 
-    use binary_codec::SerializerConfig;
+    use binary_codec::{BinaryDeserializer, BinarySerializer};
 
     use super::*;
 
@@ -88,10 +86,10 @@ mod tests {
 
         println!("DISC: {}", discr);
 
-        let bytes = o.to_bytes::<()>(None).unwrap();
+        let bytes = BinarySerializer::<()>::to_bytes(&o).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
 
-        let o2 = ExampleObject::from_bytes::<()>(&bytes, None).unwrap();
+        let o2 = BinaryDeserializer::<()>::from_bytes(&bytes).unwrap();
 
         assert_eq!(o, o2);
     }

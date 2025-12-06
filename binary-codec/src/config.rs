@@ -11,6 +11,12 @@ pub struct SerializerConfig<T = ()> where T: Clone {
     pub data: Option<T>
 }
 
+impl Default for SerializerConfig {
+    fn default() -> Self {
+        Self::new(None::<()>)
+    }
+}
+
 impl<T : Clone> SerializerConfig<T> {
     pub fn new(data: Option<T>) -> Self {
         Self {

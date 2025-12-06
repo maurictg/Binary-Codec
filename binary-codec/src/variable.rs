@@ -19,13 +19,13 @@ pub fn write_string<T : Clone>(value: &str, size_key: Option<&str>, buffer: &mut
 }
 
 pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut SerializerConfig<U>) -> Result<T, DeserializationError>  
-    where T : crate::BinaryDeserializer, U : Clone 
+    where T : crate::BinaryDeserializer<U>, U : Clone 
 {
     let len = get_read_size(bytes, size_key, config)?;
 
     // If exact size of buffer is available, don't slice
     if ensure_size(config, bytes, len)? {
-        T::from_bytes(bytes, Some(config))
+        T::deserialize(bytes, Some(config))
     } else {
         // Create an isolated slice like we do for a String, but with its own config
         config.reset_bits(true);
@@ -33,12 +33,12 @@ pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut Seri
         temp_config.reset();
 
         let slice = slice(config, bytes, len, true)?;
-        T::from_bytes(&slice, Some(&mut temp_config))
+        T::deserialize(&slice, Some(&mut temp_config))
     }
 }
 
 pub fn write_object<T, U>(value: &T, size_key: Option<&str>, buffer: &mut Vec<u8>, config: &mut SerializerConfig<U>) -> Result<(), SerializationError>  
-    where T : crate::BinarySerializer, U : Clone
+    where T : crate::BinarySerializer<U>, U : Clone
 {
     // If length name is provided, we need to ensure the length matches
     // So we write it to a different buffer
@@ -64,8 +64,8 @@ mod tests {
         nr: u16
     }
 
-    impl BinaryDeserializer for TestObj {
-        fn from_bytes<T : Clone>(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError> {
+    impl<T : Clone> BinaryDeserializer<T> for TestObj {
+        fn deserialize(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError> {
             let config = config.unwrap();
             let nr = FixedInt::read(bytes, config)?;
             Ok(TestObj { nr })
