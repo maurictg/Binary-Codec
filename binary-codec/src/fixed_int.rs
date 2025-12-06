@@ -205,10 +205,10 @@ mod tests {
     #[test]
     fn test_write_read_zigzag_i32() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let val: i32 = -123;
         write_zigzag::<i32, 4>(val, &mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let decoded = read_zigzag::<i32, 4>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -216,10 +216,10 @@ mod tests {
     #[test]
     fn test_write_read_zigzag_i64() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let val: i64 = 456789;
         write_zigzag::<i64, 8>(val, &mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let decoded = read_zigzag::<i64, 8>(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -227,10 +227,10 @@ mod tests {
     #[test]
     fn test_write_read_fixedint_u32() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let val: u32 = 0b1010_1010_1010_1010_1010_1010_1010_1010;
         val.write(&mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let decoded = u32::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -238,10 +238,10 @@ mod tests {
     #[test]
     fn test_write_read_fixedint_u128() {
         let mut bytes = Vec::new();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let val: u128 = 0b1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010_1010;
         val.write(&mut bytes, &mut config).unwrap();
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         let decoded = u128::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, val);
     }
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn test_read_fixedint_with_offset_bits() {
         let bytes = [0b0101_0101, 7];
-        let mut config= SerializerConfig::new();
+        let mut config= SerializerConfig::new(None);
         config.bits = 4;
         let decoded = u8::read(&bytes, &mut config).unwrap();
         assert_eq!(decoded, 7);

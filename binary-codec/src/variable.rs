@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_read_number_object_after_reading_few_bits() {
         let bytes = vec![0b0000_0011, 0, 7];
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
 
         let small_nr = read_small_dynamic_unsigned(&bytes, &mut config, 2).unwrap();
         assert_eq!(small_nr, 3);

@@ -203,7 +203,7 @@ fn generate_struct_serializer(
         quote! {
             impl binary_codec::BinaryDeserializer for #struct_name {
                 fn from_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
-                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
                     
@@ -226,7 +226,7 @@ fn generate_struct_serializer(
                 }
 
                 fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig>) -> Result<(), #error_type> {
-                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = buffer;
 
@@ -362,7 +362,7 @@ fn generate_enum_serializer(
         quote! {
             impl binary_codec::BinaryDeserializer for #enum_name {
                 fn from_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig>) -> Result<Self, #error_type> {
-                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
 
@@ -390,7 +390,7 @@ fn generate_enum_serializer(
                 }
 
                 fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig>) -> Result<(), #error_type> {
-                    let mut _new_config = binary_codec::SerializerConfig::new();
+                    let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = buffer;
 

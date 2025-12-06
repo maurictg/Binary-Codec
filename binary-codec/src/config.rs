@@ -1,24 +1,26 @@
 use std::{collections::HashMap};
 
 #[derive(Clone, Debug)]
-pub struct SerializerConfig {
+pub struct SerializerConfig<T = ()> where T : Clone + std::fmt::Debug {
     toggle_keys: HashMap<String, bool>,
     length_keys: HashMap<String, usize>,
     variant_keys: HashMap<String, u8>,
     pub bits: u8,
     pub pos: usize,
-    pub discriminator: Option<u8>
+    pub discriminator: Option<u8>,
+    pub data: Option<T>
 }
 
-impl SerializerConfig {
-    pub fn new() -> Self {
+impl<T> SerializerConfig<T> where T : Clone + std::fmt::Debug {
+    pub fn new(data: Option<T>) -> Self {
         Self {
             toggle_keys: HashMap::new(),
             length_keys: HashMap::new(),
             variant_keys: HashMap::new(),
             bits: 0,
             pos: 0,
-            discriminator: None
+            discriminator: None,
+            data
         }
     }
 

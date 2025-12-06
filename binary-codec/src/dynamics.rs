@@ -123,11 +123,11 @@ mod tests {
     #[test]
     fn test_write_read_small_dynamic_unsigned() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let bit_count = 4;
         let val: u8 = 0b1010;
         write_small_dynamic_unsigned(val, &mut bytes, &mut config, bit_count).unwrap();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let result = read_small_dynamic_unsigned(&bytes, &mut config, bit_count).unwrap();
         assert_eq!(result, val);
     }
@@ -135,11 +135,11 @@ mod tests {
     #[test]
     fn test_write_read_small_dynamic_signed() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let bit_count = 4;
         let val: i8 = -3;
         write_small_dynamic_signed(val, &mut bytes, &mut config, bit_count).unwrap();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let result = read_small_dynamic_signed(&bytes, &mut config, bit_count).unwrap();
         assert_eq!(result, val);
     }
@@ -147,14 +147,14 @@ mod tests {
     #[test]
     fn test_write_read_small_dynamic_unsigned_existing_byte() {
         let mut bytes = vec![0b0000_0111]; // 7
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         config.pos = 0;
         config.bits = 4;
         let bit_count = 4;
         let val: u8 = 5;
         write_small_dynamic_unsigned(val, &mut bytes, &mut config, bit_count).unwrap();
         assert_eq!(bytes, vec![0b0101_0111]);
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let result = read_small_dynamic_unsigned(&bytes, &mut config, bit_count).unwrap();
         assert_eq!(result, 7); // first 4 bits
         let result = read_small_dynamic_unsigned(&bytes, &mut config, bit_count).unwrap();
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn test_write_small_dynamic_unsigned_out_of_bounds() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let bit_count = 3;
         let val: u8 = 0b1000; // 8, out of bounds for 3 bits
         let result = write_small_dynamic_unsigned(val, &mut bytes, &mut config, bit_count);
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn test_write_small_dynamic_signed_out_of_bounds() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let bit_count = 3;
         let val: i8 = 5; // out of bounds for 3 bits signed
         let result = write_small_dynamic_signed(val, &mut bytes, &mut config, bit_count);
@@ -184,9 +184,9 @@ mod tests {
     #[test]
     fn test_write_read_bool_true() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         write_bool(true, &mut bytes, &mut config).unwrap();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let result = read_bool(&bytes, &mut config).unwrap();
         assert_eq!(result, true);
     }
@@ -194,9 +194,9 @@ mod tests {
     #[test]
     fn test_write_read_bool_false() {
         let mut bytes = Vec::new();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         write_bool(false, &mut bytes, &mut config).unwrap();
-        let mut config = SerializerConfig::new();
+        let mut config = SerializerConfig::new(None);
         let result = read_bool(&bytes, &mut config).unwrap();
         assert_eq!(result, false);
     }
