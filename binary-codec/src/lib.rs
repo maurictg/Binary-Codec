@@ -32,18 +32,18 @@ pub enum DeserializationError {
 }
 
 pub trait BinarySerializer<T : Clone = ()> {
-    fn serialize(&self, config: Option<&mut SerializerConfig<T>>) -> Result<Vec<u8>, SerializationError>;
+    fn serialize_bytes(&self, config: Option<&mut SerializerConfig<T>>) -> Result<Vec<u8>, SerializationError>;
     fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
-        self.serialize(None)
+        self.serialize_bytes(None)
     }
 
     fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut SerializerConfig<T>>) -> Result<(), SerializationError>;
 }
 
 pub trait BinaryDeserializer<T : Clone = ()> : Sized {
-    fn deserialize(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError>;
+    fn deserialize_bytes(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError>;
     fn from_bytes(bytes: &[u8]) -> Result<Self, DeserializationError> {
-        Self::deserialize(bytes, None)
+        Self::deserialize_bytes(bytes, None)
     }
 }
 

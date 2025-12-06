@@ -212,7 +212,7 @@ fn generate_struct_serializer(
         // read bytes code
         quote! {
             impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
-                fn deserialize(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
+                fn deserialize_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
@@ -229,7 +229,7 @@ fn generate_struct_serializer(
         // write bytes code
         quote! {
             impl<T : Clone> binary_codec::BinarySerializer<T> for #struct_name {
-                fn serialize(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
+                fn serialize_bytes(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
                     let mut bytes = Vec::new();
                     Self::write_bytes(self, &mut bytes, config)?;
                     Ok(bytes)
@@ -395,7 +395,7 @@ fn generate_enum_serializer(
             }
 
             impl<T : Clone> binary_codec::BinaryDeserializer<T> for #enum_name {
-                fn deserialize(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
+                fn deserialize_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
@@ -417,7 +417,7 @@ fn generate_enum_serializer(
     } else {
         quote! {
             impl<T : Clone> binary_codec::BinarySerializer<T> for #enum_name {
-                fn serialize(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
+                fn serialize_bytes(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
                     let mut bytes = Vec::new();
                     Self::write_bytes(self, &mut bytes, config)?;
                     Ok(bytes)

@@ -25,7 +25,7 @@ pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut Seri
 
     // If exact size of buffer is available, don't slice
     if ensure_size(config, bytes, len)? {
-        T::deserialize(bytes, Some(config))
+        T::deserialize_bytes(bytes, Some(config))
     } else {
         // Create an isolated slice like we do for a String, but with its own config
         config.reset_bits(true);
@@ -33,7 +33,7 @@ pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut Seri
         temp_config.reset();
 
         let slice = slice(config, bytes, len, true)?;
-        T::deserialize(&slice, Some(&mut temp_config))
+        T::deserialize_bytes(&slice, Some(&mut temp_config))
     }
 }
 
@@ -65,7 +65,7 @@ mod tests {
     }
 
     impl<T : Clone> BinaryDeserializer<T> for TestObj {
-        fn deserialize(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError> {
+        fn deserialize_bytes(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError> {
             let config = config.unwrap();
             let nr = FixedInt::read(bytes, config)?;
             Ok(TestObj { nr })
