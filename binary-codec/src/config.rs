@@ -1,14 +1,19 @@
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
-pub struct SerializerConfig<T = ()> where T: Clone {
+pub struct SerializerConfig<T = ()>
+where
+    T: Clone,
+{
     toggle_keys: HashMap<String, bool>,
     length_keys: HashMap<String, usize>,
     variant_keys: HashMap<String, u8>,
+    multi_disc_config: HashMap<String, HashMap<u8, String>>,
+    multi_disc_list: HashMap<String, Vec<u8>>,
     pub bits: u8,
     pub pos: usize,
     pub discriminator: Option<u8>,
-    pub data: Option<T>
+    pub data: Option<T>,
 }
 
 impl Default for SerializerConfig {
@@ -17,17 +22,56 @@ impl Default for SerializerConfig {
     }
 }
 
-impl<T : Clone> SerializerConfig<T> {
+impl<T: Clone> SerializerConfig<T> {
     pub fn new(data: Option<T>) -> Self {
         Self {
             toggle_keys: HashMap::new(),
             length_keys: HashMap::new(),
             variant_keys: HashMap::new(),
+            multi_disc_config: HashMap::new(),
+            multi_disc_list: HashMap::new(),
             bits: 0,
             pos: 0,
             discriminator: None,
-            data
+            data,
         }
+    }
+
+    pub fn configure_multi_disc(&mut self, enum_name: &str, disc: u8, multi_by: &str) {
+        let entry = self
+            .multi_disc_config
+            .entry(enum_name.to_string())
+            .or_insert_with(HashMap::new);
+        
+        entry.insert(disc, multi_by.to_string());
+    }
+
+    pub fn get_multi_disc_size(&self, enum_name: &str) -> usize {
+        self.get_toggled_multi_discs(enum_name).len()
+    }
+
+    pub fn get_next_multi_disc(&mut self, field: &str, enum_name: &str) -> Option<u8> {
+        let discs = self.get_toggled_multi_discs(enum_name);
+        let entry = self
+            .multi_disc_list
+            .entry(format!("{}.{}", field, enum_name))
+            .or_insert(discs);
+
+        entry.pop()
+    }
+
+    fn get_toggled_multi_discs(&self, enum_name: &str) -> Vec<u8> {
+        let mut discs = Vec::new();
+        if let Some(disc_map) = self.multi_disc_config.get(enum_name) {
+            for (disc, toggle) in disc_map.iter() {
+                if self.get_toggle(toggle).unwrap_or(false) {
+                    discs.push(*disc);
+                }
+            }
+        }
+        discs.sort();
+        discs.reverse();
+        discs
     }
 
     pub fn next_reset_bits_pos(&self) -> usize {
@@ -63,7 +107,7 @@ impl<T : Clone> SerializerConfig<T> {
             let key = &key[1..];
             return self.toggle_keys.get(key).map(|v| !*v);
         }
-        
+
         self.toggle_keys.get(key).copied()
     }
 

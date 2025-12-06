@@ -1,9 +1,9 @@
 extern crate proc_macro;
 
-use quote::{format_ident, quote};
+use quote::{ToTokens, format_ident, quote};
 use syn::{
-    parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, Data, DeriveInput, Fields,
-    Lit, PathArguments, Type,
+    Attribute, Data, DeriveInput, Fields, Lit, PathArguments, Type, parse_macro_input,
+    punctuated::Punctuated, token::Comma,
 };
 
 #[proc_macro_derive(
@@ -20,7 +20,8 @@ use syn::{
         length_by,
         variant_for,
         variant_by,
-        no_discriminator
+        multi_enum,
+        no_discriminator,
     )
 )]
 pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -41,6 +42,7 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
         length_by,
         variant_for,
         variant_by,
+        multi_enum,
         no_discriminator
     )
 )]
@@ -90,6 +92,7 @@ fn generate_struct_serializer(
         let mut bits_count = None;
         let mut key_dyn_length = false;
         let mut val_dyn_length = false;
+        let mut multi_enum = false;
 
         // Search attributes for length/toggle declarations
         for attr in field.attrs.iter() {
@@ -99,6 +102,7 @@ fn generate_struct_serializer(
                 Some("dyn_length") => has_dynamic_length = true,
                 Some("key_dyn_length") => key_dyn_length = true,
                 Some("val_dyn_length") => val_dyn_length = true,
+                Some("multi_enum") => multi_enum = true,
                 Some("toggles") => toggle_key = get_string_value_from_attribute(attr),
                 Some("variant_for") => variant_key = get_string_value_from_attribute(attr),
                 Some("length_for") => length_key = get_string_value_from_attribute(attr),
@@ -106,8 +110,7 @@ fn generate_struct_serializer(
                 Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
                 Some("length_by") => length_by = get_string_value_from_attribute(attr),
                 Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
-                _ => {}
-                // None => continue
+                _ => {} // None => continue
             }
         }
 
@@ -122,7 +125,9 @@ fn generate_struct_serializer(
                     _p_config.set_toggle(#key, *_p_val);
                 }
             }
-        } else { quote! {} };
+        } else {
+            quote! {}
+        };
 
         // Runtime length_key
         let length = if let Some(key) = length_key {
@@ -135,7 +140,9 @@ fn generate_struct_serializer(
                     _p_config.set_length(#key, *_p_val as usize);
                 }
             }
-        } else { quote! {} };
+        } else {
+            quote! {}
+        };
 
         // Runtime variant_key
         let variant = if let Some(key) = variant_key {
@@ -148,7 +155,9 @@ fn generate_struct_serializer(
                     _p_config.set_variant(#key, *_p_val as u8);
                 }
             }
-        } else { quote! {} };
+        } else {
+            quote! {}
+        };
 
         // Compose code to handle field
         let before = if read {
@@ -185,6 +194,7 @@ fn generate_struct_serializer(
             has_dynamic_length,
             key_dyn_length,
             val_dyn_length,
+            multi_enum,
             0,
         );
 
@@ -206,7 +216,7 @@ fn generate_struct_serializer(
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     let _p_bytes = bytes;
-                    
+
                     #(#field_serializations)*
 
                     Ok(Self {
@@ -258,23 +268,40 @@ fn generate_enum_serializer(
         }
     }
 
-    // Create discriminant getter
-    let disc_variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
-        let var_ident = &variant.ident;
-        let disc_value = i as u8;
+    let mut configure_functions = Vec::new();
 
-        match &variant.fields {
-            Fields::Unit => quote! {
-                Self::#var_ident => #disc_value
-            },
-            Fields::Unnamed(_) => quote! {
-                Self::#var_ident(..) => #disc_value
-            },
-            Fields::Named(_) => quote! {
-                Self::#var_ident { .. } => #disc_value
-            },
-        }
-    });
+    // Create discriminant getter
+    let disc_variants = data_enum
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(i, variant)| {
+            let var_ident = &variant.ident;
+            let disc_value = i as u8;
+
+            for attr in variant.attrs.iter() {
+                if attr.path().is_ident("toggled_by") {
+                    let field = get_string_value_from_attribute(attr)
+                        .expect("toggled_by for multi_enum should have a value");
+                    configure_functions.push(quote! {
+                        _p_config.configure_multi_disc(stringify!(#enum_name), #disc_value, #field);
+                    });
+                }
+            }
+
+            match &variant.fields {
+                Fields::Unit => quote! {
+                    Self::#var_ident => #disc_value
+                },
+                Fields::Unnamed(_) => quote! {
+                    Self::#var_ident(..) => #disc_value
+                },
+                Fields::Named(_) => quote! {
+                    Self::#var_ident { .. } => #disc_value
+                },
+            }
+        })
+        .collect::<Vec<_>>();
 
     // Assign discriminant values starting from 0
     let serialization_variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
@@ -360,6 +387,13 @@ fn generate_enum_serializer(
 
     if read {
         quote! {
+            impl #enum_name {
+                pub fn configure_multi_disc<T : Clone>(config: &mut binary_codec::SerializerConfig<T>) {
+                    let _p_config = config;
+                    #(#configure_functions)*
+                }
+            }
+
             impl<T : Clone> binary_codec::BinaryDeserializer<T> for #enum_name {
                 fn deserialize(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
@@ -392,6 +426,7 @@ fn generate_enum_serializer(
                 fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<(), #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
+                    #(#configure_functions)*
                     let _p_bytes = buffer;
 
                     match self {
@@ -432,6 +467,7 @@ fn generate_enum_field_serializations(
         let mut bits_count = None;
         let mut key_dyn_length = false;
         let mut val_dyn_length = false;
+        let mut multi_enum = false;
 
         for attr in f.attrs.iter() {
             let ident = attr.path().get_ident().map(|i| i.clone().to_string());
@@ -440,6 +476,7 @@ fn generate_enum_field_serializations(
                 Some("dyn_length") => has_dynamic_length = true,
                 Some("key_dyn_length") => key_dyn_length = true,
                 Some("val_dyn_length") => val_dyn_length = true,
+                Some("multi_enum") => multi_enum = true,
                 Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
                 Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
                 Some("length_by") => length_by = get_string_value_from_attribute(attr),
@@ -460,6 +497,7 @@ fn generate_enum_field_serializations(
             has_dynamic_length,
             key_dyn_length,
             val_dyn_length,
+            multi_enum,
             0,
         );
 
@@ -490,6 +528,7 @@ fn generate_code_for_handling_field(
     has_dynamic_length: bool,
     key_dyn_length: bool,
     val_dyn_length: bool,
+    multi_enum: bool,
     level: usize,
 ) -> proc_macro2::TokenStream {
     if let Type::Path(path) = field_type {
@@ -622,10 +661,19 @@ fn generate_code_for_handling_field(
                     let size_key = generate_size_key(length_by, has_dynamic_length).1;
 
                     let variant_code = if variant_by.is_some() {
-                        quote! { 
+                        quote! {
                             _p_config.discriminator = _p_config.get_variant(#variant_by);
                         }
-                    } else { quote! {} };
+                    } else if multi_enum {
+                        quote! {
+                            #ident::configure_multi_disc(_p_config);
+                            _p_config.discriminator = _p_config.get_next_multi_disc(stringify!(#field_name), #ident_name);
+                        }
+                    } else {
+                        quote! {
+                            _p_config.discriminator = None;
+                        }
+                    };
 
                     if read {
                         quote! {
@@ -661,6 +709,7 @@ fn generate_code_for_handling_field(
                             has_dynamic_length,
                             key_dyn_length,
                             val_dyn_length,
+                            multi_enum,
                             level + 1,
                         );
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
@@ -711,6 +760,7 @@ fn generate_code_for_handling_field(
                     "Vec" => {
                         let vec_name = format_ident!("__val_{}", level);
                         let inner_type = get_inner_type(path).expect("Vec missing inner type");
+
                         let handle = generate_code_for_handling_field(
                             read,
                             inner_type,
@@ -723,6 +773,7 @@ fn generate_code_for_handling_field(
                             val_dyn_length,
                             false,
                             false,
+                            multi_enum,
                             level + 1,
                         );
 
@@ -734,10 +785,25 @@ fn generate_code_for_handling_field(
                             }
                         };
 
-                        if has_size {
+                        if has_size || (read && multi_enum) {
                             if read {
+                                let len_code = if multi_enum && let Type::Path(path) = inner_type {
+                                    let enum_ident = path
+                                        .path
+                                        .get_ident()
+                                        .expect("Expected ident for multi_enum inner type");
+                                    quote! {
+                                        #enum_ident::configure_multi_disc(_p_config);
+                                        let _p_len = _p_config.get_multi_disc_size(stringify!(#enum_ident));
+                                    }
+                                } else {
+                                    quote! {
+                                        let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
+                                    }
+                                };
+
                                 quote! {
-                                    let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
+                                    #len_code
                                     let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
                                     for _ in 0.._p_len {
                                         #handle
@@ -785,6 +851,7 @@ fn generate_code_for_handling_field(
                             key_dyn_length,
                             false,
                             false,
+                            false,
                             level + 1,
                         );
 
@@ -798,6 +865,7 @@ fn generate_code_for_handling_field(
                             None,
                             is_dynamic_int,
                             val_dyn_length,
+                            false,
                             false,
                             false,
                             level + 1,
@@ -893,6 +961,7 @@ fn generate_code_for_handling_field(
             val_dyn_length,
             false,
             false,
+            false,
             level + 1,
         );
 
@@ -927,7 +996,10 @@ fn generate_error_type(read: bool) -> proc_macro2::TokenStream {
     }
 }
 
-fn generate_size_key(length_by: Option<String>, has_dynamic_length: bool) -> (bool, proc_macro2::TokenStream) {
+fn generate_size_key(
+    length_by: Option<String>,
+    has_dynamic_length: bool,
+) -> (bool, proc_macro2::TokenStream) {
     if let Some(length_by) = length_by.as_ref() {
         (true, quote! { Some(#length_by) })
     } else if has_dynamic_length {
@@ -937,13 +1009,9 @@ fn generate_size_key(length_by: Option<String>, has_dynamic_length: bool) -> (bo
     }
 }
 
-fn get_string_value_from_attribute(
-    attr: &Attribute
-) -> Option<String> {
+fn get_string_value_from_attribute(attr: &Attribute) -> Option<String> {
     match &attr.meta {
-        syn::Meta::Path(_) => {
-            None
-        }
+        syn::Meta::Path(_) => None,
         syn::Meta::List(list_value) => {
             // #[myattribute("value")]
             for token in list_value.tokens.clone().into_iter() {
@@ -968,9 +1036,7 @@ fn get_string_value_from_attribute(
 
 fn get_int_value_from_attribute(attr: &Attribute) -> Option<i32> {
     match &attr.meta {
-        syn::Meta::Path(_) => {
-            None
-        }
+        syn::Meta::Path(_) => None,
         syn::Meta::List(list_value) => {
             // #[myattribute(value)]
             for token in list_value.tokens.clone().into_iter() {
