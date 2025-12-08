@@ -42,7 +42,7 @@ impl<T: Clone> SerializerConfig<T> {
             .multi_disc_config
             .entry(enum_name.to_string())
             .or_insert_with(HashMap::new);
-        
+
         entry.insert(disc, multi_by.to_string());
     }
 
@@ -90,7 +90,6 @@ impl<T: Clone> SerializerConfig<T> {
     }
 
     pub fn set_toggle(&mut self, key: &str, value: bool) {
-        println!("Setting toggle key {} to {}", key, value);
         self.toggle_keys.insert(key.to_string(), value);
     }
 

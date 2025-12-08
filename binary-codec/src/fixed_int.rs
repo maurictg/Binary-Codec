@@ -3,7 +3,7 @@ use crate::{
     utils::{ensure_size, slice},
 };
 
-pub fn write_zigzag<T, const S: usize, U : Clone>(
+pub fn write_zigzag<T, const S: usize, U: Clone>(
     val: T,
     bytes: &mut Vec<u8>,
     config: &mut SerializerConfig<U>,
@@ -16,7 +16,7 @@ where
     encoded.write(bytes, config)
 }
 
-pub fn read_zigzag<T, const S: usize, U : Clone>(
+pub fn read_zigzag<T, const S: usize, U: Clone>(
     bytes: &[u8],
     config: &mut SerializerConfig<U>,
 ) -> Result<T, DeserializationError>
@@ -33,18 +33,26 @@ pub trait FixedInt<const S: usize>: Sized {
     fn serialize(self) -> [u8; S];
     fn deserialize(bytes: &[u8]) -> Self;
 
-    fn write<U : Clone>(
+    fn write<U: Clone>(
         self,
         bytes: &mut Vec<u8>,
         config: &mut SerializerConfig<U>,
     ) -> Result<(), SerializationError> {
         config.reset_bits(false);
         bytes.extend_from_slice(&self.serialize());
-        config.pos += S;
+
+        // If first byte and only byte to write, don't increment pos counter but set bits to 8
+        // TODO: we might need to investigate this edge case further
+        if config.pos == 0 && S == 1 {
+            config.bits = 8;
+        } else {
+            config.pos += S;
+        }
+
         Ok(())
     }
 
-    fn read<U : Clone>(
+    fn read<U: Clone>(
         bytes: &[u8],
         config: &mut SerializerConfig<U>,
     ) -> Result<Self, DeserializationError> {

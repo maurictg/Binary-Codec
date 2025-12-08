@@ -1,6 +1,6 @@
 use crate::{DeserializationError, SerializationError, SerializerConfig, fixed_int::ZigZag};
 
-pub fn read_small_dynamic_unsigned<T : Clone>(
+pub fn read_small_dynamic_unsigned<T: Clone>(
     bytes: &[u8],
     config: &mut SerializerConfig<T>,
     bit_count: u8,
@@ -8,7 +8,7 @@ pub fn read_small_dynamic_unsigned<T : Clone>(
     read_small_dynamic(bytes, config, bit_count)
 }
 
-pub fn read_small_dynamic_signed<T : Clone>(
+pub fn read_small_dynamic_signed<T: Clone>(
     bytes: &[u8],
     config: &mut SerializerConfig<T>,
     bit_count: u8,
@@ -17,7 +17,7 @@ pub fn read_small_dynamic_signed<T : Clone>(
     Ok(ZigZag::to_signed(val))
 }
 
-pub fn write_small_dynamic_unsigned<T : Clone>(
+pub fn write_small_dynamic_unsigned<T: Clone>(
     val: u8,
     bytes: &mut Vec<u8>,
     config: &mut SerializerConfig<T>,
@@ -26,13 +26,15 @@ pub fn write_small_dynamic_unsigned<T : Clone>(
     let max = (1u8 << bit_count) - 1;
 
     if val > max {
-        return Err(SerializationError::ValueOutOfBounds(val as i32, 0, max as i32));
+        return Err(SerializationError::ValueOutOfBounds(
+            val as i32, 0, max as i32,
+        ));
     }
 
     write_small_dynamic(val, bytes, config, bit_count)
 }
 
-pub fn write_small_dynamic_signed<T : Clone>(
+pub fn write_small_dynamic_signed<T: Clone>(
     val: i8,
     bytes: &mut Vec<u8>,
     config: &mut SerializerConfig<T>,
@@ -42,24 +44,26 @@ pub fn write_small_dynamic_signed<T : Clone>(
     let max = (1i8 << (bit_count - 1)) - 1;
 
     if val < min || val > max {
-        return Err(SerializationError::ValueOutOfBounds(val as i32, min as i32, max as i32));
+        return Err(SerializationError::ValueOutOfBounds(
+            val as i32, min as i32, max as i32,
+        ));
     }
 
     write_small_dynamic(val.to_unsigned(), bytes, config, bit_count)
 }
 
-pub fn write_bool<T : Clone>(
+pub fn write_bool<T: Clone>(
     val: bool,
     bytes: &mut Vec<u8>,
-    config: &mut SerializerConfig<T>
+    config: &mut SerializerConfig<T>,
 ) -> Result<(), SerializationError> {
     let val_u8 = if val { 1 } else { 0 };
     write_small_dynamic(val_u8, bytes, config, 1)
 }
 
-pub fn read_bool<T : Clone>(
+pub fn read_bool<T: Clone>(
     bytes: &[u8],
-    config: &mut SerializerConfig<T>
+    config: &mut SerializerConfig<T>,
 ) -> Result<bool, DeserializationError> {
     let val = read_small_dynamic(bytes, config, 1)?;
     Ok(val != 0)
@@ -70,12 +74,11 @@ fn create_mask(bits: &u8, bit_count: u8) -> u8 {
     return mask << *bits;
 }
 
-fn read_small_dynamic<T : Clone>(
+fn read_small_dynamic<T: Clone>(
     bytes: &[u8],
     config: &mut SerializerConfig<T>,
-    bit_count: u8
-) -> Result<u8, DeserializationError>
-{
+    bit_count: u8,
+) -> Result<u8, DeserializationError> {
     if config.bits == 8 || config.bits + bit_count > 8 {
         config.bits = 0;
         config.pos += 1;
@@ -90,16 +93,15 @@ fn read_small_dynamic<T : Clone>(
     Ok(result)
 }
 
-fn write_small_dynamic<T : Clone>(
+fn write_small_dynamic<T: Clone>(
     val: u8,
     bytes: &mut Vec<u8>,
     config: &mut SerializerConfig<T>,
-    bit_count: u8
-) -> Result<(), SerializationError>
-{
+    bit_count: u8,
+) -> Result<(), SerializationError> {
     if config.bits == 0 || config.bits + bit_count > 8 {
         config.bits = 0;
-        
+
         if bytes.len() > 0 {
             config.pos += 1;
         }

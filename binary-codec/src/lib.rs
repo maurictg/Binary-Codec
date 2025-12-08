@@ -31,28 +31,38 @@ pub enum DeserializationError {
     InvalidData(String),
 }
 
-pub trait BinarySerializer<T : Clone = ()> {
-    fn serialize_bytes(&self, config: Option<&mut SerializerConfig<T>>) -> Result<Vec<u8>, SerializationError>;
+pub trait BinarySerializer<T: Clone = ()> {
+    fn serialize_bytes(
+        &self,
+        config: Option<&mut SerializerConfig<T>>,
+    ) -> Result<Vec<u8>, SerializationError>;
     fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         self.serialize_bytes(None)
     }
 
-    fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut SerializerConfig<T>>) -> Result<(), SerializationError>;
+    fn write_bytes(
+        &self,
+        buffer: &mut Vec<u8>,
+        config: Option<&mut SerializerConfig<T>>,
+    ) -> Result<(), SerializationError>;
 }
 
-pub trait BinaryDeserializer<T : Clone = ()> : Sized {
-    fn deserialize_bytes(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError>;
+pub trait BinaryDeserializer<T: Clone = ()>: Sized {
+    fn deserialize_bytes(
+        bytes: &[u8],
+        config: Option<&mut SerializerConfig<T>>,
+    ) -> Result<Self, DeserializationError>;
     fn from_bytes(bytes: &[u8]) -> Result<Self, DeserializationError> {
         Self::deserialize_bytes(bytes, None)
     }
 }
 
 mod config;
-pub mod utils;
+pub mod dyn_int;
 pub mod dynamics;
 pub mod fixed_int;
-pub mod dyn_int;
+pub mod utils;
 pub mod variable;
 
-pub use binary_codec_derive::{ToBytes, FromBytes};
+pub use binary_codec_derive::{FromBytes, ToBytes};
 pub use config::SerializerConfig;

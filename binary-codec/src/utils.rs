@@ -1,26 +1,26 @@
 use crate::{
-    DeserializationError,
-    SerializationError,
-    SerializerConfig,
-    dyn_int::{read_dynint, write_dynint}
+    DeserializationError, SerializationError, SerializerConfig,
+    dyn_int::{read_dynint, write_dynint},
 };
 
-pub fn ensure_size<T : Clone>(
+pub fn ensure_size<T: Clone>(
     config: &SerializerConfig<T>,
     bytes: &[u8],
-    required: usize
+    required: usize,
 ) -> Result<bool, DeserializationError> {
     if config.pos + required > bytes.len() {
-        return Err(DeserializationError::NotEnoughBytes(config.pos + required - bytes.len()));
+        return Err(DeserializationError::NotEnoughBytes(
+            config.pos + required - bytes.len(),
+        ));
     }
     Ok(config.pos + required == bytes.len())
 }
 
-pub fn slice<'a, T : Clone>(
+pub fn slice<'a, T: Clone>(
     config: &mut SerializerConfig<T>,
     bytes: &'a [u8],
     length: usize,
-    increment: bool
+    increment: bool,
 ) -> Result<&'a [u8], DeserializationError> {
     ensure_size(config, bytes, length)?;
     let slice = &bytes[config.pos..config.pos + length];
@@ -30,17 +30,19 @@ pub fn slice<'a, T : Clone>(
     Ok(slice)
 }
 
-pub fn get_read_size<'a, T : Clone>(
+pub fn get_read_size<'a, T: Clone>(
     bytes: &'a [u8],
     size_key: Option<&str>,
-    config: &mut SerializerConfig<T>
+    config: &mut SerializerConfig<T>,
 ) -> Result<usize, DeserializationError> {
     let size = if let Some(size_key) = size_key {
         if size_key == "__dynamic" {
             return read_dynint(bytes, config).map(|v| v as usize);
         }
 
-        config.get_length(size_key).unwrap_or(bytes.len() - config.pos)
+        config
+            .get_length(size_key)
+            .unwrap_or(bytes.len() - config.pos)
     } else {
         bytes.len() - config.pos
     };
@@ -49,11 +51,11 @@ pub fn get_read_size<'a, T : Clone>(
     Ok(size)
 }
 
-pub fn write_size<T : Clone>(
+pub fn write_size<T: Clone>(
     size: usize,
     size_key: Option<&str>,
     buffer: &mut Vec<u8>,
-    config: &mut SerializerConfig<T>
+    config: &mut SerializerConfig<T>,
 ) -> Result<(), SerializationError> {
     if let Some(size_key) = size_key {
         if size_key == "__dynamic" {

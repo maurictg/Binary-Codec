@@ -1,25 +1,43 @@
-use crate::{DeserializationError, SerializationError, SerializerConfig, utils::{ensure_size, get_read_size, slice, write_size}};
+use crate::{
+    DeserializationError, SerializationError, SerializerConfig,
+    utils::{ensure_size, get_read_size, slice, write_size},
+};
 
-pub fn read_string<T : Clone>(bytes: &[u8], size_key: Option<&str>, config: &mut SerializerConfig<T>) -> Result<String, DeserializationError> {
+pub fn read_string<T: Clone>(
+    bytes: &[u8],
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<T>,
+) -> Result<String, DeserializationError> {
     let len = get_read_size(bytes, size_key, config)?;
     config.reset_bits(true);
     let slice = slice(config, bytes, len, true)?;
     let string = String::from_utf8(slice.to_vec()).expect("Not valid UTF-8 bytes to create string");
-    
+
     Ok(string)
 }
 
-pub fn write_string<T : Clone>(value: &str, size_key: Option<&str>, buffer: &mut Vec<u8>, config: &mut SerializerConfig<T>) -> Result<(), SerializationError> {
+pub fn write_string<T: Clone>(
+    value: &str,
+    size_key: Option<&str>,
+    buffer: &mut Vec<u8>,
+    config: &mut SerializerConfig<T>,
+) -> Result<(), SerializationError> {
     config.reset_bits(false);
-    write_size(value.len(), size_key, buffer, config)?; 
+    write_size(value.len(), size_key, buffer, config)?;
 
     buffer.extend_from_slice(&value.as_bytes());
     config.pos += value.len();
     Ok(())
 }
 
-pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut SerializerConfig<U>) -> Result<T, DeserializationError>  
-    where T : crate::BinaryDeserializer<U>, U : Clone 
+pub fn read_object<T, U>(
+    bytes: &[u8],
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<U>,
+) -> Result<T, DeserializationError>
+where
+    T: crate::BinaryDeserializer<U>,
+    U: Clone,
 {
     let len = get_read_size(bytes, size_key, config)?;
 
@@ -37,8 +55,15 @@ pub fn read_object<T, U>(bytes: &[u8], size_key: Option<&str>, config: &mut Seri
     }
 }
 
-pub fn write_object<T, U>(value: &T, size_key: Option<&str>, buffer: &mut Vec<u8>, config: &mut SerializerConfig<U>) -> Result<(), SerializationError>  
-    where T : crate::BinarySerializer<U>, U : Clone
+pub fn write_object<T, U>(
+    value: &T,
+    size_key: Option<&str>,
+    buffer: &mut Vec<u8>,
+    config: &mut SerializerConfig<U>,
+) -> Result<(), SerializationError>
+where
+    T: crate::BinarySerializer<U>,
+    U: Clone,
 {
     // If length name is provided, we need to ensure the length matches
     // So we write it to a different buffer
@@ -61,11 +86,14 @@ mod tests {
     use super::*;
 
     struct TestObj {
-        nr: u16
+        nr: u16,
     }
 
-    impl<T : Clone> BinaryDeserializer<T> for TestObj {
-        fn deserialize_bytes(bytes: &[u8], config: Option<&mut SerializerConfig<T>>) -> Result<Self, DeserializationError> {
+    impl<T: Clone> BinaryDeserializer<T> for TestObj {
+        fn deserialize_bytes(
+            bytes: &[u8],
+            config: Option<&mut SerializerConfig<T>>,
+        ) -> Result<Self, DeserializationError> {
             let config = config.unwrap();
             let nr = FixedInt::read(bytes, config)?;
             Ok(TestObj { nr })

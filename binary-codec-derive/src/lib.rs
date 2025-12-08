@@ -64,6 +64,159 @@ fn generate_code_binary_serializer(
     }
 }
 
+fn generate_field_serializer(
+    read: bool,
+    field_ident: &proc_macro2::Ident,
+    field_type: &syn::Type,
+    field: &syn::Field,
+    is_enum: bool
+) -> proc_macro2::TokenStream {
+    let single_ident_type_name = if let Type::Path(path) = field_type {
+        if path.path.segments.len() == 1 {
+            Some(path.path.segments[0].ident.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut toggle_key = None;
+    let mut variant_key = None;
+    let mut length_key = None;
+    let mut toggled_by = None;
+    let mut variant_by = None;
+    let mut length_by = None;
+    let mut is_dynamic_int = false;
+    let mut has_dynamic_length = false;
+    let mut bits_count = None;
+    let mut key_dyn_length = false;
+    let mut val_dyn_length = false;
+    let mut multi_enum = false;
+
+    // Search attributes for length/toggle declarations
+    for attr in field.attrs.iter() {
+        let ident = attr.path().get_ident().map(|i| i.clone().to_string());
+        match ident.as_deref() {
+            Some("dyn_int") => is_dynamic_int = true,
+            Some("dyn_length") => has_dynamic_length = true,
+            Some("key_dyn_length") => key_dyn_length = true,
+            Some("val_dyn_length") => val_dyn_length = true,
+            Some("multi_enum") => multi_enum = true,
+            Some("toggles") => toggle_key = get_string_value_from_attribute(attr),
+            Some("variant_for") => variant_key = get_string_value_from_attribute(attr),
+            Some("length_for") => length_key = get_string_value_from_attribute(attr),
+            Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
+            Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
+            Some("length_by") => length_by = get_string_value_from_attribute(attr),
+            Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
+            _ => {} // None => continue
+        }
+    }
+
+    let val_reference = if matches!(single_ident_type_name, Some(s) if s == String::from("RefCell"))
+    {
+        if read {
+            quote! {
+                *#field_ident.borrow()
+            }
+        } else {
+            quote! {
+                *_p_val.borrow()
+            }
+        }
+    } else {
+        if read {
+            quote! {
+                _p_val
+            }
+        } else {
+            quote! {
+                *_p_val
+            }
+        }
+    };
+
+    // Runtime toggle_key
+    let toggles = if let Some(key) = toggle_key {
+        quote! {
+            _p_config.set_toggle(#key, #val_reference);
+        }
+    } else {
+        quote! {}
+    };
+
+    // Runtime length_key
+    let length = if let Some(key) = length_key {
+        quote! {
+            _p_config.set_length(#key, #val_reference as usize);
+        }
+    } else {
+        quote! {}
+    };
+
+    // Runtime variant_key
+    let variant = if let Some(key) = variant_key {
+        quote! {
+            _p_config.set_variant(#key, #val_reference as u8);
+        }
+    } else {
+        quote! {}
+    };
+
+    // Compose code to handle field
+    let f_ident = if is_enum {
+        quote! { #field_ident }
+    } else {
+        quote! { &self.#field_ident }
+    };
+
+    let before = if read {
+        quote! {}
+    } else {
+        quote! {
+            let _p_val = #f_ident;
+            #toggles
+            #length
+            #variant
+        }
+    };
+
+    let after = if read {
+        quote! {
+            let #field_ident = _p_val;
+            #toggles
+            #length
+            #variant
+        }
+    } else {
+        quote! {}
+    };
+
+    let handle_field = generate_code_for_handling_field(
+        read,
+        field_type,
+        field_ident,
+        bits_count,
+        toggled_by,
+        variant_by,
+        length_by,
+        is_dynamic_int,
+        has_dynamic_length,
+        key_dyn_length,
+        val_dyn_length,
+        multi_enum,
+        false,
+        0
+    );
+
+    quote! {
+        #before
+        #handle_field
+        #after
+    }
+}
+
 fn generate_struct_serializer(
     read: bool,
     ast: &DeriveInput,
@@ -74,149 +227,16 @@ fn generate_struct_serializer(
 
     // Iterate all fields in the struct
     let field_serializations = fields.iter().map(|field| {
-        let field_name = field
-            .ident
-            .as_ref()
-            .expect("ToBytes does not support fields without a name");
-
-        let field_type = &field.ty;
-
-        let single_ident_type_name = if let Type::Path(path) = field_type {
-            if path.path.segments.len() == 1 {
-                Some(path.path.segments[0].ident.to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let mut toggle_key = None;
-        let mut variant_key = None;
-        let mut length_key = None;
-        let mut toggled_by = None;
-        let mut variant_by = None;
-        let mut length_by = None;
-        let mut is_dynamic_int = false;
-        let mut has_dynamic_length = false;
-        let mut bits_count = None;
-        let mut key_dyn_length = false;
-        let mut val_dyn_length = false;
-        let mut multi_enum = false;
-
-        // Search attributes for length/toggle declarations
-        for attr in field.attrs.iter() {
-            let ident = attr.path().get_ident().map(|i| i.clone().to_string());
-            match ident.as_deref() {
-                Some("dyn_int") => is_dynamic_int = true,
-                Some("dyn_length") => has_dynamic_length = true,
-                Some("key_dyn_length") => key_dyn_length = true,
-                Some("val_dyn_length") => val_dyn_length = true,
-                Some("multi_enum") => multi_enum = true,
-                Some("toggles") => toggle_key = get_string_value_from_attribute(attr),
-                Some("variant_for") => variant_key = get_string_value_from_attribute(attr),
-                Some("length_for") => length_key = get_string_value_from_attribute(attr),
-                Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
-                Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
-                Some("length_by") => length_by = get_string_value_from_attribute(attr),
-                Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
-                _ => {} // None => continue
-            }
-        }
-
-        let val_reference = if matches!(single_ident_type_name, Some(s) if s == String::from("RefCell")) {
-            if read {
-                quote! {
-                    *#field_name.borrow()
-                }
-            } else {
-                quote! {
-                    *_p_val.borrow()
-                }
-            }
-        } else {
-            if read {
-                quote! { 
-                    _p_val
-                }
-            } else {
-                quote! {
-                    *_p_val
-                }
-            }
-        };
-
-        // Runtime toggle_key
-        let toggles = if let Some(key) = toggle_key {
-            quote! {
-                _p_config.set_toggle(#key, #val_reference);
-            }
-        } else {
-            quote! {}
-        };
-
-        // Runtime length_key
-        let length = if let Some(key) = length_key {
-            quote! {
-                _p_config.set_length(#key, #val_reference as usize);
-            }
-        } else {
-            quote! {}
-        };
-
-        // Runtime variant_key
-        let variant = if let Some(key) = variant_key {
-            quote! {
-                _p_config.set_variant(#key, #val_reference as u8);
-            }
-        } else {
-            quote! {}
-        };
-
-        // Compose code to handle field
-        let before = if read {
-            quote! {}
-        } else {
-            quote! {
-                let _p_val = &self.#field_name;
-                #toggles
-                #length
-                #variant
-            }
-        };
-
-        let after = if read {
-            quote! {
-                let #field_name = _p_val;
-                #toggles
-                #length
-                #variant
-            }
-        } else {
-            quote! {}
-        };
-
-        let handle_field = generate_code_for_handling_field(
+        generate_field_serializer(
             read,
-            field_type,
-            field_name,
-            bits_count,
-            toggled_by,
-            variant_by,
-            length_by,
-            is_dynamic_int,
-            has_dynamic_length,
-            key_dyn_length,
-            val_dyn_length,
-            multi_enum,
-            0,
-        );
-
-        quote! {
-            #before
-            #handle_field
-            #after
-        }
+            &field
+                .ident
+                .as_ref()
+                .expect("binary-codec does not support fields without a name"),
+            &field.ty,
+            field,
+            false
+        )
     });
 
     let error_type = generate_error_type(read);
@@ -322,6 +342,8 @@ fn generate_enum_serializer(
         let var_ident = &variant.ident;
         let disc_value = i as u8; // Could be changed to u16/u32 if needed
         let fields = &variant.fields;
+
+        // TODO: problem might be that attrs are not used from the fields??.
 
         let write_disc = if no_disc_prefix {
             quote! {}
@@ -472,60 +494,7 @@ fn generate_enum_field_serializations(
         let field_type = &f.ty;
         let field_ident = &idents[i];
 
-        // Extract attributes from enum field (same attrs supported for struct fields)
-        let mut toggled_by = None;
-        let mut variant_by = None;
-        let mut length_by = None;
-        let mut is_dynamic_int = false;
-        let mut has_dynamic_length = false;
-        let mut bits_count = None;
-        let mut key_dyn_length = false;
-        let mut val_dyn_length = false;
-        let mut multi_enum = false;
-
-        for attr in f.attrs.iter() {
-            let ident = attr.path().get_ident().map(|i| i.clone().to_string());
-            match ident.as_deref() {
-                Some("dyn_int") => is_dynamic_int = true,
-                Some("dyn_length") => has_dynamic_length = true,
-                Some("key_dyn_length") => key_dyn_length = true,
-                Some("val_dyn_length") => val_dyn_length = true,
-                Some("multi_enum") => multi_enum = true,
-                Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
-                Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
-                Some("length_by") => length_by = get_string_value_from_attribute(attr),
-                Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
-                _ => {}
-            }
-        }
-
-        let handle_field = generate_code_for_handling_field(
-            read,
-            field_type,
-            field_ident,
-            bits_count,
-            toggled_by,
-            variant_by,
-            length_by,
-            is_dynamic_int,
-            has_dynamic_length,
-            key_dyn_length,
-            val_dyn_length,
-            multi_enum,
-            0,
-        );
-
-        if read {
-            quote! {
-                #handle_field
-                let #field_ident = _p_val;
-            }
-        } else {
-            quote! {
-                let _p_val = #field_ident;
-                #handle_field
-            }
-        }
+        generate_field_serializer(read, &field_ident, field_type, f, true)
     });
     field_serializations.collect()
 }
@@ -543,6 +512,7 @@ fn generate_code_for_handling_field(
     key_dyn_length: bool,
     val_dyn_length: bool,
     multi_enum: bool,
+    direct_collection_child: bool,
     level: usize,
 ) -> proc_macro2::TokenStream {
     if let Type::Path(path) = field_type {
@@ -679,8 +649,14 @@ fn generate_code_for_handling_field(
                             _p_config.discriminator = _p_config.get_variant(#variant_by);
                         }
                     } else if multi_enum {
+                        let config_multi = if !direct_collection_child {
+                            quote! { #ident::configure_multi_disc(_p_config); }
+                        } else {
+                            quote! {}
+                        };
+
                         quote! {
-                            #ident::configure_multi_disc(_p_config);
+                            #config_multi
                             _p_config.discriminator = _p_config.get_next_multi_disc(stringify!(#field_name), #ident_name);
                         }
                     } else {
@@ -724,6 +700,7 @@ fn generate_code_for_handling_field(
                             key_dyn_length,
                             val_dyn_length,
                             multi_enum,
+                            false,
                             level + 1,
                         );
 
@@ -754,6 +731,7 @@ fn generate_code_for_handling_field(
                             key_dyn_length,
                             val_dyn_length,
                             multi_enum,
+                            false,
                             level + 1,
                         );
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
@@ -818,6 +796,7 @@ fn generate_code_for_handling_field(
                             false,
                             false,
                             multi_enum,
+                            true,
                             level + 1,
                         );
 
@@ -896,6 +875,7 @@ fn generate_code_for_handling_field(
                             false,
                             false,
                             false,
+                            false,
                             level + 1,
                         );
 
@@ -909,6 +889,7 @@ fn generate_code_for_handling_field(
                             None,
                             is_dynamic_int,
                             val_dyn_length,
+                            false,
                             false,
                             false,
                             false,
@@ -1006,6 +987,7 @@ fn generate_code_for_handling_field(
             false,
             false,
             false,
+            true,
             level + 1,
         );
 
