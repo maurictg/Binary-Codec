@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use quote::{ToTokens, format_ident, quote};
+use quote::{format_ident, quote};
 use syn::{
     Attribute, Data, DeriveInput, Fields, Lit, PathArguments, Type, parse_macro_input,
     punctuated::Punctuated, token::Comma,
@@ -81,6 +81,16 @@ fn generate_struct_serializer(
 
         let field_type = &field.ty;
 
+        let single_ident_type_name = if let Type::Path(path) = field_type {
+            if path.path.segments.len() == 1 {
+                Some(path.path.segments[0].ident.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let mut toggle_key = None;
         let mut variant_key = None;
         let mut length_key = None;
@@ -114,16 +124,32 @@ fn generate_struct_serializer(
             }
         }
 
-        // Runtime toggle_key
-        let toggles = if let Some(key) = toggle_key {
+        let val_reference = if matches!(single_ident_type_name, Some(s) if s == String::from("RefCell")) {
             if read {
                 quote! {
-                    _p_config.set_toggle(#key, _p_val);
+                    *#field_name.borrow()
                 }
             } else {
                 quote! {
-                    _p_config.set_toggle(#key, *_p_val);
+                    *_p_val.borrow()
                 }
+            }
+        } else {
+            if read {
+                quote! { 
+                    _p_val
+                }
+            } else {
+                quote! {
+                    *_p_val
+                }
+            }
+        };
+
+        // Runtime toggle_key
+        let toggles = if let Some(key) = toggle_key {
+            quote! {
+                _p_config.set_toggle(#key, #val_reference);
             }
         } else {
             quote! {}
@@ -131,14 +157,8 @@ fn generate_struct_serializer(
 
         // Runtime length_key
         let length = if let Some(key) = length_key {
-            if read {
-                quote! {
-                    _p_config.set_length(#key, _p_val as usize);
-                }
-            } else {
-                quote! {
-                    _p_config.set_length(#key, *_p_val as usize);
-                }
+            quote! {
+                _p_config.set_length(#key, #val_reference as usize);
             }
         } else {
             quote! {}
@@ -146,14 +166,8 @@ fn generate_struct_serializer(
 
         // Runtime variant_key
         let variant = if let Some(key) = variant_key {
-            if read {
-                quote! {
-                    _p_config.set_variant(#key, _p_val as u8);
-                }
-            } else {
-                quote! {
-                    _p_config.set_variant(#key, *_p_val as u8);
-                }
+            quote! {
+                _p_config.set_variant(#key, #val_reference as u8);
             }
         } else {
             quote! {}
@@ -695,6 +709,36 @@ fn generate_code_for_handling_field(
                 let ident_name = ident.to_string();
 
                 match ident_name.as_ref() {
+                    "RefCell" => {
+                        let inner_type = get_inner_type(path).expect("Option missing inner type");
+                        let handle = generate_code_for_handling_field(
+                            read,
+                            inner_type,
+                            field_name,
+                            bits_count,
+                            None,
+                            variant_by,
+                            length_by,
+                            is_dynamic_int,
+                            has_dynamic_length,
+                            key_dyn_length,
+                            val_dyn_length,
+                            multi_enum,
+                            level + 1,
+                        );
+
+                        if read {
+                            quote! {
+                                #handle
+                                let _p_val = RefCell::new(_p_val);
+                            }
+                        } else {
+                            quote! {
+                                let _p_val = &*_p_val.borrow();
+                                #handle
+                            }
+                        }
+                    }
                     "Option" => {
                         let inner_type = get_inner_type(path).expect("Option missing inner type");
                         let handle = generate_code_for_handling_field(

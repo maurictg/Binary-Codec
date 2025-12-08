@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, borrow::Borrow};
 
 use binary_codec_derive::{FromBytes, ToBytes};
 // mod out;
@@ -57,7 +57,7 @@ struct Testt {
     #[toggles("2")]
     has2: bool,
     #[toggles("3")]
-    has3: bool,
+    has3: RefCell<bool>,
     #[toggles("bool")]
     boolean_is_true: bool,
 
@@ -66,6 +66,8 @@ struct Testt {
 
     #[multi_enum]
     boolean: Boolean,
+
+    pub ref_val: RefCell<String>
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -102,10 +104,11 @@ mod tests {
         let t = Testt {
             has1: false,
             has2: true,
-            has3: true,
+            has3: RefCell::new(true),
             boolean_is_true: true,
             boolean: Boolean::True(55),
             multi: vec![MultiEnum::Value2(34),MultiEnum::Value3(34)],
+            ref_val: RefCell::new(String::from("hello!"))
         };
 
         let bytes = BinarySerializer::<()>::to_bytes(&t).unwrap();
