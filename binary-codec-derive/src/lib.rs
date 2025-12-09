@@ -69,7 +69,7 @@ fn generate_field_serializer(
     field_ident: &proc_macro2::Ident,
     field_type: &syn::Type,
     field: &syn::Field,
-    is_enum: bool
+    is_enum: bool,
 ) -> proc_macro2::TokenStream {
     let single_ident_type_name = if let Type::Path(path) = field_type {
         if path.path.segments.len() == 1 {
@@ -207,7 +207,7 @@ fn generate_field_serializer(
         val_dyn_length,
         multi_enum,
         false,
-        0
+        0,
     );
 
     quote! {
@@ -235,7 +235,7 @@ fn generate_struct_serializer(
                 .expect("binary-codec does not support fields without a name"),
             &field.ty,
             field,
-            false
+            false,
         )
     });
 

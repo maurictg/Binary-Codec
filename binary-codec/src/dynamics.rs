@@ -1,3 +1,4 @@
+/*
 use crate::{DeserializationError, SerializationError, SerializerConfig, fixed_int::ZigZag};
 
 pub fn read_small_dynamic_unsigned<T: Clone>(
@@ -219,3 +220,4 @@ mod tests {
         assert_eq!(mask, 0b0001_1000);
     }
 }
+*/

@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SerializationError {
     /// Value is out of bounds (value, min, max)
     ValueOutOfBounds(i32, i32, i32),
@@ -13,7 +13,7 @@ pub enum SerializationError {
     InvalidData(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DeserializationError {
     /// Not enough bytes (bytes missing)
     NotEnoughBytes(usize),
@@ -57,10 +57,10 @@ pub trait BinaryDeserializer<T: Clone = ()>: Sized {
     }
 }
 
+pub mod bitstream;
 mod config;
-pub mod dyn_int;
 pub mod dynamics;
-pub mod fixed_int;
+pub mod encoding;
 pub mod utils;
 pub mod variable;
 

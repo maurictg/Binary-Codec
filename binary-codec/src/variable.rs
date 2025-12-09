@@ -1,3 +1,4 @@
+/*
 use crate::{
     DeserializationError, SerializationError, SerializerConfig,
     utils::{ensure_size, get_read_size, slice, write_size},
@@ -79,6 +80,8 @@ where
     }
 }
 
+*/
+/*
 #[cfg(test)]
 mod tests {
     use crate::{BinaryDeserializer, dynamics::read_small_dynamic_unsigned, fixed_int::FixedInt};
@@ -116,3 +119,4 @@ mod tests {
         assert_eq!(config.pos, 3);
     }
 }
+*/
