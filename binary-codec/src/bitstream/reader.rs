@@ -13,7 +13,8 @@ impl<'a> BitStreamReader<'a> {
         Self { buffer, bit_pos: 0 }
     }
 
-    fn byte_pos(&self) -> usize {
+    /// Get byte position of reader
+    pub fn byte_pos(&self) -> usize {
         self.bit_pos / 8
     }
 
@@ -189,7 +190,7 @@ mod tests {
         let buf = [0b10101100, 0b11010010];
         let mut reader = BitStreamReader::new(&buf);
 
-        reader.read_small(3); // advance 3 bits
+        reader.read_small(3).unwrap(); // advance 3 bits
         assert_eq!(reader.read_byte(), Ok(0b11010010)); // full second byte
     }
 
@@ -198,7 +199,7 @@ mod tests {
         let buf = [0x01, 0xAA, 0xBB, 0xCC];
         let mut reader = BitStreamReader::new(&buf);
 
-        reader.read_bit(); // first bit
+        reader.read_bit().unwrap(); // first bit
         let slice = reader.read_bytes(3).unwrap();
         assert_eq!(slice, &[0xAA, 0xBB, 0xCC]);
     }
@@ -208,7 +209,7 @@ mod tests {
         let buf = [0b10101100, 0b11010010];
         let mut reader = BitStreamReader::new(&buf);
 
-        reader.read_small(3); // 3 bits
+        reader.read_small(3).unwrap(); // 3 bits
         reader.align_byte(); // move to next byte
         assert_eq!(reader.read_byte(), Ok(0b11010010));
     }

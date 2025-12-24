@@ -10,8 +10,6 @@ where
     variant_keys: HashMap<String, u8>,
     multi_disc_config: HashMap<String, HashMap<u8, String>>,
     multi_disc_list: HashMap<String, Vec<u8>>,
-    pub bits: u8,
-    pub pos: usize,
     pub discriminator: Option<u8>,
     pub data: Option<T>,
 }
@@ -30,8 +28,6 @@ impl<T: Clone> SerializerConfig<T> {
             variant_keys: HashMap::new(),
             multi_disc_config: HashMap::new(),
             multi_disc_list: HashMap::new(),
-            bits: 0,
-            pos: 0,
             discriminator: None,
             data,
         }
@@ -74,21 +70,6 @@ impl<T: Clone> SerializerConfig<T> {
         discs
     }
 
-    pub fn next_reset_bits_pos(&self) -> usize {
-        if self.bits == 0 {
-            self.pos
-        } else {
-            self.pos + 1
-        }
-    }
-
-    pub fn reset_bits(&mut self, is_read: bool) {
-        if self.bits != 0 && is_read {
-            self.pos += 1;
-        }
-        self.bits = 0;
-    }
-
     pub fn set_toggle(&mut self, key: &str, value: bool) {
         self.toggle_keys.insert(key.to_string(), value);
     }
@@ -119,8 +100,6 @@ impl<T: Clone> SerializerConfig<T> {
     }
 
     pub fn reset(&mut self) {
-        self.bits = 0;
-        self.pos = 0;
         self.discriminator = None;
     }
 }

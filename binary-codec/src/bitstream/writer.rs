@@ -13,7 +13,8 @@ impl<'a> BitStreamWriter<'a> {
         Self { buffer, bit_pos: 0 }
     }
 
-    fn byte_pos(&self) -> usize {
+    /// Get byte position of writer
+    pub fn byte_pos(&self) -> usize {
         self.bit_pos / 8
     }
 

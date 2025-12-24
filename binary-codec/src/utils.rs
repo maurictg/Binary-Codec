@@ -1,4 +1,3 @@
-/*
 use crate::{
     DeserializationError, SerializationError, SerializerConfig,
     dyn_int::{read_dynint, write_dynint},
@@ -72,4 +71,3 @@ pub fn write_size<T: Clone>(
 
     Ok(())
 }
-*/
