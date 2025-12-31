@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use binary_codec_derive::{FromBytes, ToBytes};
+// mod out;
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
 struct ExampleObject {
@@ -39,6 +40,8 @@ struct ExampleObject {
 
     #[dyn_int]
     dyn_int: u64,
+
+    data: [u8; 16]
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -162,6 +165,7 @@ mod tests {
                 m.insert(2, String::from("world!"));
                 m
             },
+            data: [0u8; 16],
         };
 
         let x = Nested::D { x: 5 };

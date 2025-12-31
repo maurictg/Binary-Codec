@@ -813,7 +813,7 @@ fn generate_code_for_handling_field(
 
                                         quote! {
                                             #write_size
-                                            _p_stream.write_bytes(&_p_val);
+                                            _p_stream.write_bytes(_p_val);
                                         }
                                     }
                                 } else {
@@ -1027,7 +1027,7 @@ fn generate_code_for_handling_field(
                         }
                     } else {
                         quote! {
-                            _p_stream.write_bytes(&_p_val);
+                            _p_stream.write_bytes(_p_val);
                         }
                     }
                 } else {
