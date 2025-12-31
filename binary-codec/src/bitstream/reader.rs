@@ -248,4 +248,36 @@ mod tests {
         assert_eq!(Ok(268435455), stream.read_dyn_int());
         assert_eq!(Err(DeserializationError::NotEnoughBytes(1)), stream.read_dyn_int());
     }
+
+    #[test]
+    fn test_read_fixed_int() {
+        let buf = vec![
+                1, 2, 0, 2, 0, 4, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0,
+                0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 10
+            ];
+
+        let mut stream = BitStreamReader::new(&buf);
+        let v1: u8 = stream.read_fixed_int().unwrap();
+        let v2: i8 = stream.read_fixed_int().unwrap();
+        let v3: u16 = stream.read_fixed_int().unwrap();
+        let v4: i16 = stream.read_fixed_int().unwrap();
+        let v5: u32 = stream.read_fixed_int().unwrap();
+        let v6: i32 = stream.read_fixed_int().unwrap();
+        let v7: u64 = stream.read_fixed_int().unwrap();
+        let v8: i64 = stream.read_fixed_int().unwrap();
+        let v9: u128 = stream.read_fixed_int().unwrap();
+        let v10: i128 = stream.read_fixed_int().unwrap();
+
+        assert_eq!(v1, 1);
+        assert_eq!(v2, 1);
+        assert_eq!(v3, 2);
+        assert_eq!(v4, 2);
+        assert_eq!(v5, 3);
+        assert_eq!(v6, 3);
+        assert_eq!(v7, 4);
+        assert_eq!(v8, 4);
+        assert_eq!(v9, 5);
+        assert_eq!(v10, 5);
+    }
 }

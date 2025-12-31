@@ -1,3 +1,5 @@
+use crate::encoding::zigzag::ZigZag;
+
 /// FixedInt
 pub trait FixedInt<const S: usize>: Sized {
     /// Serialize self to fixed-size big-endian u8 array
@@ -19,6 +21,16 @@ impl FixedInt<1> for u8 {
     }
 }
 
+impl FixedInt<1> for i8 {
+    fn serialize(self) -> [u8; 1] {
+        FixedInt::serialize(self.to_unsigned())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        ZigZag::to_signed(FixedInt::deserialize(bytes))
+    }
+}
+
 impl FixedInt<2> for u16 {
     fn serialize(self) -> [u8; 2] {
         self.to_be_bytes()
@@ -28,6 +40,16 @@ impl FixedInt<2> for u16 {
         u16::from_be_bytes(bytes.try_into().unwrap())
             .try_into()
             .unwrap()
+    }
+}
+
+impl FixedInt<2> for i16 {
+    fn serialize(self) -> [u8; 2] {
+        FixedInt::serialize(self.to_unsigned())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        ZigZag::to_signed(FixedInt::deserialize(bytes))
     }
 }
 
@@ -43,6 +65,16 @@ impl FixedInt<4> for u32 {
     }
 }
 
+impl FixedInt<4> for i32 {
+    fn serialize(self) -> [u8; 4] {
+        FixedInt::serialize(self.to_unsigned())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        ZigZag::to_signed(FixedInt::deserialize(bytes))
+    }
+}
+
 impl FixedInt<8> for u64 {
     fn serialize(self) -> [u8; 8] {
         self.to_be_bytes()
@@ -55,6 +87,16 @@ impl FixedInt<8> for u64 {
     }
 }
 
+impl FixedInt<8> for i64 {
+    fn serialize(self) -> [u8; 8] {
+        FixedInt::serialize(self.to_unsigned())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        ZigZag::to_signed(FixedInt::deserialize(bytes))
+    }
+}
+
 impl FixedInt<16> for u128 {
     fn serialize(self) -> [u8; 16] {
         self.to_be_bytes()
@@ -64,6 +106,16 @@ impl FixedInt<16> for u128 {
         u128::from_be_bytes(bytes.try_into().unwrap())
             .try_into()
             .unwrap()
+    }
+}
+
+impl FixedInt<16> for i128 {
+    fn serialize(self) -> [u8; 16] {
+        FixedInt::serialize(self.to_unsigned())
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        ZigZag::to_signed(FixedInt::deserialize(bytes))
     }
 }
 

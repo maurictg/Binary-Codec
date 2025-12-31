@@ -98,7 +98,7 @@ impl<'a> BitStreamWriter<'a> {
     }
 
     /// Write a integer of fixed size to the buffer
-    pub fn write_fixed_int<const S : usize, T : FixedInt<S>>(&mut self, val: T) {
+    pub fn write_fixed_int<const S: usize, T: FixedInt<S>>(&mut self, val: T) {
         self.write_bytes(&val.serialize());
     }
 
@@ -258,5 +258,31 @@ mod tests {
         assert_eq!(7, stream.len());
 
         assert_eq!(vec![127, 128, 1, 255, 255, 255, 127], buf);
+    }
+
+    #[test]
+    fn test_write_fixed_int() {
+        let mut buf = Vec::new();
+        let mut stream = BitStreamWriter::new(&mut buf);
+
+        stream.write_fixed_int(1u8);
+        stream.write_fixed_int(1i8);
+        stream.write_fixed_int(2u16);
+        stream.write_fixed_int(2i16);
+        stream.write_fixed_int(3u32);
+        stream.write_fixed_int(3i32);
+        stream.write_fixed_int(4u64);
+        stream.write_fixed_int(4i64);
+        stream.write_fixed_int(5u128);
+        stream.write_fixed_int(5i128);
+
+        assert_eq!(
+            vec![
+                1, 2, 0, 2, 0, 4, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0,
+                0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 10
+            ],
+            buf
+        );
     }
 }

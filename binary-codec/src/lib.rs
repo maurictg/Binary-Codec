@@ -32,37 +32,26 @@ pub enum DeserializationError {
 }
 
 pub trait BinarySerializer<T: Clone = ()> {
-    fn serialize_bytes(
-        &self,
-        config: Option<&mut SerializerConfig<T>>,
-    ) -> Result<Vec<u8>, SerializationError>;
-    fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
-        self.serialize_bytes(None)
-    }
-
     fn write_bytes(
         &self,
-        buffer: &mut Vec<u8>,
+        stream: &mut BitStreamWriter,
         config: Option<&mut SerializerConfig<T>>,
     ) -> Result<(), SerializationError>;
 }
 
 pub trait BinaryDeserializer<T: Clone = ()>: Sized {
-    fn deserialize_bytes(
-        bytes: &[u8],
+    fn read_bytes(
+        stream: &mut BitStreamReader,
         config: Option<&mut SerializerConfig<T>>,
     ) -> Result<Self, DeserializationError>;
-    fn from_bytes(bytes: &[u8]) -> Result<Self, DeserializationError> {
-        Self::deserialize_bytes(bytes, None)
-    }
 }
 
-pub mod bitstream;
+mod bitstream;
 mod config;
-pub mod dynamics;
 pub mod encoding;
 pub mod utils;
 pub mod variable;
 
 pub use binary_codec_derive::{FromBytes, ToBytes};
 pub use config::SerializerConfig;
+pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter};
