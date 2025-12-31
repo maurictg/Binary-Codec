@@ -87,7 +87,9 @@ impl<'a> BitStreamReader<'a> {
 
         let start = self.byte_pos();
         if start + count > self.buffer.len() {
-            return Err(DeserializationError::NotEnoughBytes(start + count - self.buffer.len()));
+            return Err(DeserializationError::NotEnoughBytes(
+                start + count - self.buffer.len(),
+            ));
         }
 
         self.bit_pos += 8 * count;
@@ -118,7 +120,9 @@ impl<'a> BitStreamReader<'a> {
     }
 
     /// Read a integer of fixed size from the buffer
-    pub fn read_fixed_int<const S : usize, T : FixedInt<S>>(&mut self) -> Result<T, DeserializationError> {
+    pub fn read_fixed_int<const S: usize, T: FixedInt<S>>(
+        &mut self,
+    ) -> Result<T, DeserializationError> {
         let data = self.read_bytes(S)?;
         Ok(FixedInt::deserialize(data))
     }
@@ -128,6 +132,16 @@ impl<'a> BitStreamReader<'a> {
         let rem = self.bit_pos % 8;
         if rem != 0 {
             self.bit_pos += 8 - rem;
+        }
+    }
+
+    /// Get bytes left
+    pub fn bytes_left(&self) -> usize {
+        let left = self.buffer.len() - self.byte_pos();
+        if self.bit_pos % 8 != 0 {
+            left - 1 // If not aligned, we can't read the last byte fully
+        } else {
+            left
         }
     }
 
@@ -220,9 +234,18 @@ mod tests {
         let mut reader = BitStreamReader::new(&buf);
 
         assert_eq!(reader.read_byte(), Ok(0xFF));
-        assert_eq!(reader.read_bit(), Err(DeserializationError::NotEnoughBytes(1)));
-        assert_eq!(reader.read_byte(), Err(DeserializationError::NotEnoughBytes(1)));
-        assert_eq!(reader.read_bytes(2), Err(DeserializationError::NotEnoughBytes(2)));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DeserializationError::NotEnoughBytes(1))
+        );
+        assert_eq!(
+            reader.read_byte(),
+            Err(DeserializationError::NotEnoughBytes(1))
+        );
+        assert_eq!(
+            reader.read_bytes(2),
+            Err(DeserializationError::NotEnoughBytes(2))
+        );
     }
 
     #[test]
@@ -234,7 +257,10 @@ mod tests {
         assert_eq!(reader.read_small(3), Ok(0b101)); // bits 1-3
         assert_eq!(reader.read_byte(), Ok(0b11001100)); // aligned full byte
         assert_eq!(reader.read_bytes(2), Ok(&[0xFF, 0x00][..]));
-        assert_eq!(reader.read_bit(), Err(DeserializationError::NotEnoughBytes(1)));
+        assert_eq!(
+            reader.read_bit(),
+            Err(DeserializationError::NotEnoughBytes(1))
+        );
     }
 
     #[test]
@@ -246,16 +272,19 @@ mod tests {
         assert_eq!(Ok(127), stream.read_dyn_int());
         assert_eq!(Ok(128), stream.read_dyn_int());
         assert_eq!(Ok(268435455), stream.read_dyn_int());
-        assert_eq!(Err(DeserializationError::NotEnoughBytes(1)), stream.read_dyn_int());
+        assert_eq!(
+            Err(DeserializationError::NotEnoughBytes(1)),
+            stream.read_dyn_int()
+        );
     }
 
     #[test]
     fn test_read_fixed_int() {
         let buf = vec![
-                1, 2, 0, 2, 0, 4, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0,
-                0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 10
-            ];
+            1, 2, 0, 2, 0, 4, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0,
+            8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 10,
+        ];
 
         let mut stream = BitStreamReader::new(&buf);
         let v1: u8 = stream.read_fixed_int().unwrap();
@@ -279,5 +308,21 @@ mod tests {
         assert_eq!(v8, 4);
         assert_eq!(v9, 5);
         assert_eq!(v10, 5);
+    }
+
+    #[test]
+    fn test_bytes_left() {
+        let buf = [0b10101100, 0b11010010, 0xFF, 0x00];
+        let mut reader = BitStreamReader::new(&buf);
+
+        assert_eq!(reader.bytes_left(), 4);
+        reader.read_small(3).unwrap(); // read 3 bits
+        assert_eq!(reader.bytes_left(), 3); // 3 full bytes left
+        reader.read_byte().unwrap(); // read one byte
+        assert_eq!(reader.bytes_left(), 2); // now 2 bytes left
+        reader.read_byte().unwrap(); // read another byte
+        assert_eq!(reader.bytes_left(), 1); // now 1 bytes left
+        reader.read_bit().unwrap(); // read one bit
+        assert_eq!(reader.bytes_left(), 0); // no full bytes left
     }
 }

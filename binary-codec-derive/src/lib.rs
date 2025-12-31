@@ -245,34 +245,35 @@ fn generate_struct_serializer(
 
         // read bytes code
         quote! {
-            impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
-                fn deserialize_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
-                    let mut _new_config = binary_codec::SerializerConfig::new(None);
-                    let _p_config = config.unwrap_or(&mut _new_config);
-                    let _p_bytes = bytes;
+                impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
+                    fn read_bytes(
+                        stream: &mut binary_codec::BitStreamReader,
+                        config: Option<&mut binary_codec::SerializerConfig<T>>,
+                    ) -> Result<Self, #error_type> {
+                        let mut _new_config = binary_codec::SerializerConfig::new(None);
+                        let _p_config = config.unwrap_or(&mut _new_config);
+                        let _p_stream = stream;
 
-                    #(#field_serializations)*
+                        #(#field_serializations)*
 
-                    Ok(Self {
-                        #(#vars),*
-                    })
+                        Ok(Self {
+                            #(#vars),*
+                        })
+                    }
                 }
             }
-        }
     } else {
         // write bytes code
         quote! {
             impl<T : Clone> binary_codec::BinarySerializer<T> for #struct_name {
-                fn serialize_bytes(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
-                    let mut bytes = Vec::new();
-                    Self::write_bytes(self, &mut bytes, config)?;
-                    Ok(bytes)
-                }
-
-                fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<(), #error_type> {
+                fn write_bytes(
+                    &self,
+                    stream: &mut binary_codec::BitStreamWriter,
+                    config: Option<&mut binary_codec::SerializerConfig<T>>,
+                ) -> Result<(), #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
-                    let _p_bytes = buffer;
+                    let _p_stream = stream;
 
                     #(#field_serializations)*
                     Ok(())
@@ -350,7 +351,7 @@ fn generate_enum_serializer(
         } else {
             quote! {
                 let _p_disc: u8 = #disc_value;
-                binary_codec::fixed_int::FixedInt::write(_p_disc, _p_bytes, _p_config)?;
+                _p_stream.write_fixed_int(_p_disc);
             }
         };
 
@@ -431,15 +432,18 @@ fn generate_enum_serializer(
             }
 
             impl<T : Clone> binary_codec::BinaryDeserializer<T> for #enum_name {
-                fn deserialize_bytes(bytes: &[u8], config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Self, #error_type> {
+                fn read_bytes(
+                    stream: &mut binary_codec::BitStreamReader,
+                    config: Option<&mut binary_codec::SerializerConfig<T>>,
+                ) -> Result<Self, #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
-                    let _p_bytes = bytes;
+                    let _p_stream = stream;
 
                     let _p_disc = if let Some(disc) = _p_config.discriminator.take() {
                         disc
                     } else {
-                        binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?
+                        _p_stream.read_fixed_int()?
                     };
 
                     match _p_disc {
@@ -453,17 +457,15 @@ fn generate_enum_serializer(
     } else {
         quote! {
             impl<T : Clone> binary_codec::BinarySerializer<T> for #enum_name {
-                fn serialize_bytes(&self, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<Vec<u8>, #error_type> {
-                    let mut bytes = Vec::new();
-                    Self::write_bytes(self, &mut bytes, config)?;
-                    Ok(bytes)
-                }
-
-                fn write_bytes(&self, buffer: &mut Vec<u8>, config: Option<&mut binary_codec::SerializerConfig<T>>) -> Result<(), #error_type> {
+                fn write_bytes(
+                    &self,
+                    stream: &mut binary_codec::BitStreamWriter,
+                    config: Option<&mut binary_codec::SerializerConfig<T>>,
+                ) -> Result<(), #error_type> {
                     let mut _new_config = binary_codec::SerializerConfig::new(None);
                     let _p_config = config.unwrap_or(&mut _new_config);
                     #(#configure_functions)*
-                    let _p_bytes = buffer;
+                    let _p_stream = stream;
 
                     match self {
                         #(#serialization_variants)*
@@ -525,9 +527,9 @@ fn generate_code_for_handling_field(
             match ident_name.as_str() {
                 "bool" => {
                     if read {
-                        quote! { let _p_val = binary_codec::dynamics::read_bool(_p_bytes, _p_config)?; }
+                        quote! { let _p_val = _p_stream.read_bit()?;}
                     } else {
-                        quote! { binary_codec::dynamics::write_bool(*_p_val, _p_bytes, _p_config)?; }
+                        quote! { _p_stream.write_bit(*_p_val); }
                     }
                 }
                 "i8" => {
@@ -537,19 +539,15 @@ fn generate_code_for_handling_field(
                         }
 
                         if read {
-                            quote! { let _p_val = binary_codec::dynamics::read_small_dynamic_signed(_p_bytes, _p_config, #bits_count)?; }
+                            quote! { let _p_val = binary_codec::ZigZag::to_signed(_p_stream.read_small(#bits_count)?); }
                         } else {
-                            quote! { binary_codec::dynamics::write_small_dynamic_signed(*_p_val, _p_bytes, _p_config, #bits_count)?; }
+                            quote! { _p_stream.write_small(binary_codec::ZigZag::to_unsigned(*_p_val), #bits_count); }
                         }
                     } else {
                         if read {
-                            quote! {
-                                let _p_val = binary_codec::dynamics::read_zigzag(_p_bytes, _p_config)?;
-                            }
+                            quote! { let _p_val = _p_stream.read_fixed_int()?; }
                         } else {
-                            quote! {
-                                binary_codec::dynamics::write_zigzag(*_p_val, _p_bytes, _p_config)?;
-                            }
+                            quote! { _p_stream.write_fixed_int(*_p_val); }
                         }
                     }
                 }
@@ -560,19 +558,15 @@ fn generate_code_for_handling_field(
                         }
 
                         if read {
-                            quote! { let _p_val = binary_codec::dynamics::read_small_dynamic_unsigned(_p_bytes, _p_config, #bits_count)?; }
+                            quote! { let _p_val = _p_stream.read_small(#bits_count)?; }
                         } else {
-                            quote! { binary_codec::dynamics::write_small_dynamic_unsigned(*_p_val, _p_bytes, _p_config, #bits_count)?; }
+                            quote! { _p_stream.write_small(*_p_val, #bits_count); }
                         }
                     } else {
                         if read {
-                            quote! {
-                                let _p_val = binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?;
-                            }
+                            quote! { let _p_val = _p_stream.read_byte()?; }
                         } else {
-                            quote! {
-                                binary_codec::fixed_int::FixedInt::write(*_p_val, _p_bytes, _p_config)?;
-                            }
+                            quote! { _p_stream.write_byte(*_p_val); }
                         }
                     }
                 }
@@ -592,13 +586,9 @@ fn generate_code_for_handling_field(
                         }
                     } else {
                         if read {
-                            quote! {
-                                let _p_val = binary_codec::fixed_int::FixedInt::read(_p_bytes, _p_config)?;
-                            }
+                            quote! { let _p_val = _p_stream.read_fixed_int()?; }
                         } else {
-                            quote! {
-                                binary_codec::fixed_int::FixedInt::write(*_p_val, _p_bytes, _p_config)?;
-                            }
+                            quote! { _p_stream.write_fixed_int(*_p_val); }
                         }
                     }
                 }
@@ -608,23 +598,19 @@ fn generate_code_for_handling_field(
                         if read {
                             quote! {
                                 #dynint
-                                let _p_val: #ident = binary_codec::fixed_int::ZigZag::to_signed(_p_dyn);
+                                let _p_val: #ident = binary_codec::ZigZag::to_signed(_p_dyn);
                             }
                         } else {
                             quote! {
-                                let _p_dyn = binary_codec::fixed_int::ZigZag::to_unsigned(*_p_val) as u128;
+                                let _p_dyn = binary_codec::ZigZag::to_unsigned(*_p_val) as u128;
                                 #dynint
                             }
                         }
                     } else {
                         if read {
-                            quote! {
-                                let _p_val = binary_codec::fixed_int::read_zigzag(_p_bytes, _p_config)?;
-                            }
+                            quote! { let _p_val = _p_stream.read_fixed_int()?; }
                         } else {
-                            quote! {
-                                binary_codec::fixed_int::write_zigzag(*_p_val, _p_bytes, _p_config)?;
-                            }
+                            quote! { _p_stream.write_fixed_int(*_p_val); }
                         }
                     }
                 }
@@ -633,11 +619,11 @@ fn generate_code_for_handling_field(
 
                     if read {
                         quote! {
-                            let _p_val = binary_codec::variable::read_string(_p_bytes, #size_key, _p_config)?;
+                            let _p_val = binary_codec::utils::read_string(_p_stream, #size_key, _p_config)?;
                         }
                     } else {
                         quote! {
-                            binary_codec::variable::write_string(_p_val, #size_key, _p_bytes, _p_config)?;
+                            binary_codec::utils::write_string(_p_val, #size_key, _p_stream, _p_config)?;
                         }
                     }
                 }
@@ -668,12 +654,12 @@ fn generate_code_for_handling_field(
                     if read {
                         quote! {
                             #variant_code
-                            let _p_val = binary_codec::variable::read_object(_p_bytes, #size_key, _p_config)?;
+                            let _p_val = binary_codec::utils::read_object(_p_stream, #size_key, _p_config)?;
                         }
                     } else {
                         quote! {
                             #variant_code
-                            binary_codec::variable::write_object(_p_val, #size_key, _p_bytes, _p_config)?;
+                            binary_codec::utils::write_object(_p_val, #size_key, _p_stream, _p_config)?;
                         }
                     }
                 }
@@ -764,7 +750,7 @@ fn generate_code_for_handling_field(
                             if read {
                                 quote! {
                                     let mut #option_name: Option<#inner_type> = None;
-                                    if _p_config.next_reset_bits_pos() < _p_bytes.len() {
+                                    if _p_stream.bytes_left() > 0 {
                                         #handle
                                         #option_name = Some(_p_val);
                                     }
@@ -821,7 +807,7 @@ fn generate_code_for_handling_field(
                                     }
                                 } else {
                                     quote! {
-                                        let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
+                                        let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
                                     }
                                 };
 
@@ -837,7 +823,7 @@ fn generate_code_for_handling_field(
                             } else {
                                 quote! {
                                     let _p_len = _p_val.len();
-                                    binary_codec::utils::write_size(_p_len, #size_key, _p_bytes, _p_config)?;
+                                    binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
                                     #write_code
                                 }
                             }
@@ -845,7 +831,7 @@ fn generate_code_for_handling_field(
                             if read {
                                 quote! {
                                     let mut #vec_name = Vec::<#inner_type>::new();
-                                    while _p_config.next_reset_bits_pos() < _p_bytes.len() {
+                                    while _p_stream.bytes_left() > 0 {
                                         #handle
                                         #vec_name.push(_p_val);
                                     }
@@ -910,7 +896,7 @@ fn generate_code_for_handling_field(
                         if read {
                             if has_size {
                                 quote! {
-                                    let _p_len = binary_codec::utils::get_read_size(_p_bytes, #size_key, _p_config)?;
+                                    let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
                                     let mut _p_map = std::collections::HashMap::<#key_type, #value_type>::with_capacity(_p_len);
                                     for _ in 0.._p_len {
                                         let _p_key;
@@ -926,7 +912,7 @@ fn generate_code_for_handling_field(
                             } else {
                                 quote! {
                                     let mut _p_map = std::collections::HashMap::<#key_type, #value_type>::new();
-                                    while _p_config.next_reset_bits_pos() < _p_bytes.len() {
+                                    while _p_stream.bytes_left() > 0 {
                                         let _p_key;
                                         #handle_key
                                         _p_key = _p_val;
@@ -942,7 +928,7 @@ fn generate_code_for_handling_field(
                             if has_size {
                                 quote! {
                                     let _p_len = _p_val.len();
-                                    binary_codec::utils::write_size(_p_len, #size_key, _p_bytes, _p_config)?;
+                                    binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
                                     #write_code
                                 }
                             } else {
@@ -1124,11 +1110,11 @@ fn get_two_types(path: &syn::Path) -> Option<(&syn::Type, &syn::Type)> {
 fn generate_dynint(read: bool) -> proc_macro2::TokenStream {
     if read {
         quote! {
-            let _p_dyn = binary_codec::dyn_int::read_dynint(_p_bytes, _p_config)?;
+            let _p_dyn = _p_stream.read_dyn_int()?;
         }
     } else {
         quote! {
-            binary_codec::dyn_int::write_dynint(_p_dyn, _p_bytes, _p_config)?;
+            _p_stream.write_dyn_int(_p_dyn);
         }
     }
 }

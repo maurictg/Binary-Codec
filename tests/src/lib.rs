@@ -1,7 +1,6 @@
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap};
 
 use binary_codec_derive::{FromBytes, ToBytes};
-// mod out;
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
 struct ExampleObject {
@@ -118,7 +117,7 @@ mod tests {
         };
         let mut config = SerializerConfig::<()>::new(None);
 
-        let bytes = BinarySerializer::serialize_bytes(&t, Some(&mut config)).unwrap();
+        let bytes = BinarySerializer::to_bytes(&t, Some(&mut config)).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
         println!("{:?}", config);
     }
@@ -135,10 +134,10 @@ mod tests {
             ref_val: RefCell::new(String::from("hello!")),
         };
 
-        let bytes = BinarySerializer::<()>::to_bytes(&t).unwrap();
+        let bytes = BinarySerializer::<()>::to_bytes(&t, None).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
 
-        let t2 = BinaryDeserializer::<()>::from_bytes(&bytes).unwrap();
+        let t2 = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
 
         assert_eq!(t, t2);
     }
@@ -170,10 +169,10 @@ mod tests {
 
         println!("DISC: {}", discr);
 
-        let bytes = BinarySerializer::<()>::to_bytes(&o).unwrap();
+        let bytes = BinarySerializer::<()>::to_bytes(&o, None).unwrap();
         println!("{:?} [{}]", bytes, bytes.len());
 
-        let o2 = BinaryDeserializer::<()>::from_bytes(&bytes).unwrap();
+        let o2 = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
 
         assert_eq!(o, o2);
     }

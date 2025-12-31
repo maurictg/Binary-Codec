@@ -37,6 +37,16 @@ pub trait BinarySerializer<T: Clone = ()> {
         stream: &mut BitStreamWriter,
         config: Option<&mut SerializerConfig<T>>,
     ) -> Result<(), SerializationError>;
+
+    fn to_bytes(
+        &self,
+        config: Option<&mut SerializerConfig<T>>,
+    ) -> Result<Vec<u8>, SerializationError> {
+        let mut buffer = Vec::new();
+        let mut stream = BitStreamWriter::new(&mut buffer);
+        self.write_bytes(&mut stream, config)?;
+        Ok(buffer)
+    }
 }
 
 pub trait BinaryDeserializer<T: Clone = ()>: Sized {
@@ -44,14 +54,23 @@ pub trait BinaryDeserializer<T: Clone = ()>: Sized {
         stream: &mut BitStreamReader,
         config: Option<&mut SerializerConfig<T>>,
     ) -> Result<Self, DeserializationError>;
+
+    fn from_bytes(
+        bytes: &[u8],
+        config: Option<&mut SerializerConfig<T>>,
+    ) -> Result<Self, DeserializationError> {
+        let mut stream = BitStreamReader::new(bytes);
+        Self::read_bytes(&mut stream, config)
+    }
 }
 
 mod bitstream;
 mod config;
 pub mod encoding;
 pub mod utils;
-pub mod variable;
 
-pub use binary_codec_derive::{FromBytes, ToBytes};
+pub use encoding::zigzag::ZigZag;
 pub use config::SerializerConfig;
 pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter};
+pub use binary_codec_derive::{FromBytes, ToBytes};
+

@@ -1,73 +1,116 @@
-// use crate::{
-//     DeserializationError, SerializationError, SerializerConfig,
-//     dyn_int::{read_dynint, write_dynint},
-// };
+use crate::{
+    BitStreamReader, BitStreamWriter, DeserializationError, SerializationError, SerializerConfig
+};
 
-// pub fn ensure_size<T: Clone>(
-//     config: &SerializerConfig<T>,
-//     bytes: &[u8],
-//     required: usize,
-// ) -> Result<bool, DeserializationError> {
-//     if config.pos + required > bytes.len() {
-//         return Err(DeserializationError::NotEnoughBytes(
-//             config.pos + required - bytes.len(),
-//         ));
-//     }
-//     Ok(config.pos + required == bytes.len())
-// }
+pub fn get_read_size<'a, T: Clone>(
+    stream: &mut BitStreamReader,
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<T>,
+) -> Result<usize, DeserializationError> {
+    let size = if let Some(size_key) = size_key {
+        if size_key == "__dynamic" {
+            return stream.read_dyn_int().map(|v| v as usize);
+        }
 
-// pub fn slice<'a, T: Clone>(
-//     config: &mut SerializerConfig<T>,
-//     bytes: &'a [u8],
-//     length: usize,
-//     increment: bool,
-// ) -> Result<&'a [u8], DeserializationError> {
-//     ensure_size(config, bytes, length)?;
-//     let slice = &bytes[config.pos..config.pos + length];
-//     if increment {
-//         config.pos += length;
-//     }
-//     Ok(slice)
-// }
+        config
+            .get_length(size_key)
+            .unwrap_or(stream.bytes_left())
+    } else {
+        stream.bytes_left()
+    };
 
-// pub fn get_read_size<'a, T: Clone>(
-//     bytes: &'a [u8],
-//     size_key: Option<&str>,
-//     config: &mut SerializerConfig<T>,
-// ) -> Result<usize, DeserializationError> {
-//     let size = if let Some(size_key) = size_key {
-//         if size_key == "__dynamic" {
-//             return read_dynint(bytes, config).map(|v| v as usize);
-//         }
+    Ok(size)
+}
 
-//         config
-//             .get_length(size_key)
-//             .unwrap_or(bytes.len() - config.pos)
-//     } else {
-//         bytes.len() - config.pos
-//     };
+pub fn write_size<T: Clone>(
+    size: usize,
+    size_key: Option<&str>,
+    stream: &mut BitStreamWriter,
+    config: &mut SerializerConfig<T>,
+) -> Result<(), SerializationError> {
+    if let Some(size_key) = size_key {
+        if size_key == "__dynamic" {
+            stream.write_dyn_int(size as u128);
+            return Ok(())
+        }
 
-//     ensure_size(config, bytes, size)?;
-//     Ok(size)
-// }
+        if let Some(expected) = config.get_length(size_key) {
+            if expected != size {
+                return Err(SerializationError::UnexpectedLength(expected, size));
+            }
+        }
+    }
 
-// pub fn write_size<T: Clone>(
-//     size: usize,
-//     size_key: Option<&str>,
-//     buffer: &mut Vec<u8>,
-//     config: &mut SerializerConfig<T>,
-// ) -> Result<(), SerializationError> {
-//     if let Some(size_key) = size_key {
-//         if size_key == "__dynamic" {
-//             return write_dynint(size as u128, buffer, config);
-//         }
+    Ok(())
+}
 
-//         if let Some(expected) = config.get_length(size_key) {
-//             if expected != size {
-//                 return Err(SerializationError::UnexpectedLength(expected, size));
-//             }
-//         }
-//     }
+pub fn read_string<T: Clone>(
+    stream: &mut BitStreamReader,
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<T>,
+) -> Result<String, DeserializationError> {
+    let len = get_read_size(stream, size_key, config)?;
+    let slice = stream.read_bytes(len)?;
+    let string = String::from_utf8(slice.to_vec()).expect("Not valid UTF-8 bytes to create string");
 
-//     Ok(())
-// }
+    Ok(string)
+}
+
+pub fn write_string<T: Clone>(
+    value: &str,
+    size_key: Option<&str>,
+    stream: &mut BitStreamWriter,
+    config: &mut SerializerConfig<T>,
+) -> Result<(), SerializationError> {
+    write_size(value.len(), size_key, stream, config)?;
+    stream.write_bytes(&value.as_bytes());
+
+    Ok(())
+}
+
+pub fn read_object<T, U>(
+    stream: &mut BitStreamReader,
+    size_key: Option<&str>,
+    config: &mut SerializerConfig<U>,
+) -> Result<T, DeserializationError>
+where
+    T: crate::BinaryDeserializer<U>,
+    U: Clone,
+{
+    let len = get_read_size(stream, size_key, config)?;
+
+    // If exact size of buffer is available, don't slice
+    if stream.bytes_left() == len {
+        T::read_bytes(stream, Some(config))
+    } else {
+        // Create an isolated slice, because it could be that the object uses a dynamically sized buffer based on bytes left
+        let slice = stream.read_bytes(len)?;
+        let mut isolated_reader = BitStreamReader::new(slice);
+
+        T::read_bytes(&mut isolated_reader, Some(config))
+    }
+}
+
+pub fn write_object<T, U>(
+    value: &T,
+    size_key: Option<&str>,
+    stream: &mut BitStreamWriter,
+    config: &mut SerializerConfig<U>,
+) -> Result<(), SerializationError>
+where
+    T: crate::BinarySerializer<U>,
+    U: Clone,
+{
+    // If length name is provided, we need to ensure the length matches
+    // So we write it to a different buffer
+    if size_key.is_some() {
+        let mut buffer = Vec::new();
+        let mut temp_stream = BitStreamWriter::new(&mut buffer);
+        value.write_bytes(&mut temp_stream, Some(config))?;
+        write_size(buffer.len(), size_key, stream, config)?;
+        stream.write_bytes(&buffer);
+        Ok(())
+    } else {
+        value.write_bytes(stream, Some(config))
+    }
+}
