@@ -769,79 +769,135 @@ fn generate_code_for_handling_field(
                         let vec_name = format_ident!("__val_{}", level);
                         let inner_type = get_inner_type(path).expect("Vec missing inner type");
 
-                        let handle = generate_code_for_handling_field(
-                            read,
-                            inner_type,
-                            field_name,
-                            bits_count,
-                            None,
-                            None,
-                            None,
-                            is_dynamic_int,
-                            val_dyn_length,
-                            false,
-                            false,
-                            multi_enum,
-                            true,
-                            level + 1,
-                        );
+                        // If inner type is u8, optimize to bulk read/write bytes
+                        if let Type::Path(inner_path) = inner_type {
+                            if let Some(inner_ident) = inner_path.path.get_ident() {
+                                if inner_ident == "u8" {
+                                    let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
 
-                        let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
+                                    if read {
+                                        if has_size || multi_enum {
+                                            // sized read
+                                            let len_code = if multi_enum {
+                                                quote! {
+                                                    // multi_enum sized Vec<u8>
+                                                    let _p_len = _p_config.get_multi_disc_size("u8");
+                                                }
+                                            } else {
+                                                quote! {
+                                                    let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
+                                                }
+                                            };
 
-                        let write_code = quote! {
-                            for _p_val in _p_val {
-                                #handle
-                            }
-                        };
+                                            quote! {
+                                                #len_code
+                                                let _p_val = _p_stream.read_bytes(_p_len)?.to_vec();
+                                            }
+                                        } else {
+                                            // read all remaining bytes
+                                            quote! {
+                                                let _p_len = _p_stream.bytes_left();
+                                                let _p_val = _p_stream.read_bytes(_p_len)?.to_vec();
+                                            }
+                                        }
+                                    } else {
+                                        // write path: if sized, write size first
+                                        let write_size = if has_size {
+                                            quote! {
+                                                let _p_len = _p_val.len();
+                                                binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
+                                            }
+                                        } else {
+                                            quote! {}
+                                        };
 
-                        if has_size || (read && multi_enum) {
-                            if read {
-                                let len_code = if multi_enum && let Type::Path(path) = inner_type {
-                                    let enum_ident = path
-                                        .path
-                                        .get_ident()
-                                        .expect("Expected ident for multi_enum inner type");
-                                    quote! {
-                                        #enum_ident::configure_multi_disc(_p_config);
-                                        let _p_len = _p_config.get_multi_disc_size(stringify!(#enum_ident));
+                                        quote! {
+                                            #write_size
+                                            _p_stream.write_bytes(&_p_val);
+                                        }
                                     }
                                 } else {
-                                    quote! {
-                                        let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
-                                    }
-                                };
+                                    // Fallback to element-wise handling for non-u8 inner types
+                                    let handle = generate_code_for_handling_field(
+                                        read,
+                                        inner_type,
+                                        field_name,
+                                        bits_count,
+                                        None,
+                                        None,
+                                        None,
+                                        is_dynamic_int,
+                                        val_dyn_length,
+                                        false,
+                                        false,
+                                        multi_enum,
+                                        true,
+                                        level + 1,
+                                    );
 
-                                quote! {
-                                    #len_code
-                                    let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
-                                    for _ in 0.._p_len {
-                                        #handle
-                                        #vec_name.push(_p_val);
+                                    let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
+
+                                    let write_code = quote! {
+                                        for _p_val in _p_val {
+                                            #handle
+                                        }
+                                    };
+
+                                    if has_size || (read && multi_enum) {
+                                        if read {
+                                            let len_code = if multi_enum && let Type::Path(path) = inner_type {
+                                                let enum_ident = path
+                                                    .path
+                                                    .get_ident()
+                                                    .expect("Expected ident for multi_enum inner type");
+                                                quote! {
+                                                    #enum_ident::configure_multi_disc(_p_config);
+                                                    let _p_len = _p_config.get_multi_disc_size(stringify!(#enum_ident));
+                                                }
+                                            } else {
+                                                quote! {
+                                                    let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
+                                                }
+                                            };
+
+                                            quote! {
+                                                #len_code
+                                                let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
+                                                for _ in 0.._p_len {
+                                                    #handle
+                                                    #vec_name.push(_p_val);
+                                                }
+                                                let _p_val = #vec_name;
+                                            }
+                                        } else {
+                                            quote! {
+                                                let _p_len = _p_val.len();
+                                                binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
+                                                #write_code
+                                            }
+                                        }
+                                    } else {
+                                        if read {
+                                            quote! {
+                                                let mut #vec_name = Vec::<#inner_type>::new();
+                                                while _p_stream.bytes_left() > 0 {
+                                                    #handle
+                                                    #vec_name.push(_p_val);
+                                                }
+                                                let _p_val = #vec_name;
+                                            }
+                                        } else {
+                                            quote! {
+                                                #write_code
+                                            }
+                                        }
                                     }
-                                    let _p_val = #vec_name;
                                 }
                             } else {
-                                quote! {
-                                    let _p_len = _p_val.len();
-                                    binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
-                                    #write_code
-                                }
+                                panic!("Unsupported inner type for Vec");
                             }
                         } else {
-                            if read {
-                                quote! {
-                                    let mut #vec_name = Vec::<#inner_type>::new();
-                                    while _p_stream.bytes_left() > 0 {
-                                        #handle
-                                        #vec_name.push(_p_val);
-                                    }
-                                    let _p_val = #vec_name;
-                                }
-                            } else {
-                                quote! {
-                                    #write_code
-                                }
-                            }
+                            panic!("Unsupported inner type for Vec");
                         }
                     }
                     "HashMap" => {
@@ -959,41 +1015,98 @@ fn generate_code_for_handling_field(
             panic!("Expected literal to determine array length");
         };
 
-        let array_type = &array.elem;
-        let handle = generate_code_for_handling_field(
-            read,
-            array_type,
-            field_name,
-            bits_count,
-            None,
-            None,
-            None,
-            is_dynamic_int,
-            val_dyn_length,
-            false,
-            false,
-            false,
-            true,
-            level + 1,
-        );
+        let array_type = &*array.elem;
+        // Optimize [u8; N] to bulk read_bytes / write_bytes
+        if let Type::Path(at_path) = array_type {
+            if let Some(at_ident) = at_path.path.get_ident() {
+                if at_ident == "u8" {
+                    if read {
+                        quote! {
+                            let _p_slice = _p_stream.read_bytes(#len)?;
+                            let _p_val = <[u8; #len]>::try_from(_p_slice).expect("Failed to convert slice to array");
+                        }
+                    } else {
+                        quote! {
+                            _p_stream.write_bytes(&_p_val);
+                        }
+                    }
+                } else {
+                    let handle = generate_code_for_handling_field(
+                        read,
+                        array_type,
+                        field_name,
+                        bits_count,
+                        None,
+                        None,
+                        None,
+                        is_dynamic_int,
+                        val_dyn_length,
+                        false,
+                        false,
+                        false,
+                        true,
+                        level + 1,
+                    );
 
-        let array_name = format_ident!("__val_{}", level);
+                    let array_name = format_ident!("__val_{}", level);
 
-        if read {
-            quote! {
-                let mut #array_name = Vec::<#array_type>::with_capacity(#len);
-                for _ in 0..#len {
-                    #handle;
-                    #array_name.push(_p_val);
+                    if read {
+                        quote! {
+                            let mut #array_name = Vec::<#array_type>::with_capacity(#len);
+                            for _ in 0..#len {
+                                #handle;
+                                #array_name.push(_p_val);
+                            }
+                            let _p_val = TryInto::<[#array_type; #len]>::try_into(#array_name).expect("Failed to convert Vec to array");
+                        }
+                    } else {
+                        quote! {
+                            for _p_val in _p_val {
+                                #handle
+                            }
+                        }
+                    }
                 }
-                let _p_val = TryInto::<[#array_type; #len]>::try_into(#array_name).expect("Failed to convert Vec to array");
+            } else {
+                // fallback to element handling
+                let handle = generate_code_for_handling_field(
+                    read,
+                    array_type,
+                    field_name,
+                    bits_count,
+                    None,
+                    None,
+                    None,
+                    is_dynamic_int,
+                    val_dyn_length,
+                    false,
+                    false,
+                    false,
+                    true,
+                    level + 1,
+                );
+
+                let array_name = format_ident!("__val_{}", level);
+
+                if read {
+                    quote! {
+                        let mut #array_name = Vec::<#array_type>::with_capacity(#len);
+                        for _ in 0..#len {
+                            #handle;
+                            #array_name.push(_p_val);
+                        }
+                        let _p_val = TryInto::<[#array_type; #len]>::try_into(#array_name).expect("Failed to convert Vec to array");
+                    }
+                } else {
+                    quote! {
+                        for _p_val in _p_val {
+                            #handle
+                        }
+                    }
+                }
             }
         } else {
-            quote! {
-                for _p_val in _p_val {
-                    #handle
-                }
-            }
+            panic!("Unsupported array element type");
         }
     } else {
         panic!("Field type of '{:?}' not supported", field_name);
