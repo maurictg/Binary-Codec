@@ -97,6 +97,7 @@ impl<T: Clone> SerializerConfig<T> {
 
     pub fn get_variant(&self, key: &str) -> Option<u8> {
         self.variant_keys.get(key).copied()
+            .or_else(|| self.toggle_keys.get(key).map(|t| if *t { 1 } else { 0 }))
     }
 
     pub fn reset(&mut self) {

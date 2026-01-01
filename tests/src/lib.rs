@@ -69,6 +69,9 @@ struct Testt {
     #[multi_enum]
     boolean: Boolean,
 
+    #[dyn_length]
+    dyn_string: String,
+
     pub ref_val: RefCell<String>,
 }
 
@@ -104,6 +107,22 @@ enum Flags {
     },
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+#[no_discriminator]
+enum VariantByBool {
+    False(u8),
+    True(u8),
+}
+
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct ContainsBool {
+    #[toggles("boolean")]
+    flag: bool,
+
+    #[variant_by = "boolean"]
+    value: VariantByBool,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -134,6 +153,7 @@ mod tests {
             boolean_is_true: true,
             boolean: Boolean::True(55),
             multi: vec![MultiEnum::Value2(34), MultiEnum::Value3(34)],
+            dyn_string: String::from("Hello, world!"),
             ref_val: RefCell::new(String::from("hello!")),
         };
 
@@ -143,6 +163,28 @@ mod tests {
         let t2 = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
 
         assert_eq!(t, t2);
+    }
+
+    #[test]
+    fn can_do_variant_by_bool() {
+        let c = ContainsBool {
+            flag: true,
+            value: VariantByBool::True(5),
+        };
+
+        let c2 = ContainsBool {
+            flag: false,
+            value: VariantByBool::False(7),
+        };
+
+        let b1 = BinarySerializer::<()>::to_bytes(&c, None).unwrap();
+        let b2 = BinarySerializer::<()>::to_bytes(&c2, None).unwrap();
+
+        let c1d = BinaryDeserializer::<()>::from_bytes(&b1, None).unwrap();
+        let c2d = BinaryDeserializer::<()>::from_bytes(&b2, None).unwrap();
+
+        assert_eq!(c, c1d);
+        assert_eq!(c2, c2d);
     }
 
     #[test]
