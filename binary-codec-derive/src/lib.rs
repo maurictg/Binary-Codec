@@ -305,6 +305,33 @@ fn generate_enum_serializer(
 
     let mut configure_functions = Vec::new();
 
+    // Compute discriminant values following Rust rules: explicit values are used,
+    // unspecified values get previous + 1 (or 0 for the first unspecified).
+    let mut disc_values: Vec<u8> = Vec::with_capacity(data_enum.variants.len());
+    let mut last_val: Option<u8> = None;
+    for variant in data_enum.variants.iter() {
+        let val = if let Some((_, expr)) = &variant.discriminant {
+            match expr {
+                syn::Expr::Lit(syn::ExprLit { lit: Lit::Int(lit_int), .. }) => {
+                    lit_int.base10_parse::<u8>().expect("Invalid discriminant integer")
+                }
+                _ => panic!("Discriminant must be an integer literal"),
+            }
+        } else {
+            match last_val {
+                Some(v) => v + 1,
+                None => 0,
+            }
+        };
+
+        if val > u8::from(u8::MAX) {
+            panic!("Discriminant value too large (must fit in u8)");
+        }
+
+        disc_values.push(val);
+        last_val = Some(val);
+    }
+
     // Create discriminant getter
     let disc_variants = data_enum
         .variants
@@ -312,7 +339,7 @@ fn generate_enum_serializer(
         .enumerate()
         .map(|(i, variant)| {
             let var_ident = &variant.ident;
-            let disc_value = i as u8;
+            let disc_value = disc_values[i];
 
             for attr in variant.attrs.iter() {
                 if attr.path().is_ident("toggled_by") {
@@ -341,7 +368,7 @@ fn generate_enum_serializer(
     // Assign discriminant values starting from 0
     let serialization_variants = data_enum.variants.iter().enumerate().map(|(i, variant)| {
         let var_ident = &variant.ident;
-        let disc_value = i as u8; // Could be changed to u16/u32 if needed
+        let disc_value = disc_values[i];
         let fields = &variant.fields;
 
         // TODO: problem might be that attrs are not used from the fields??.

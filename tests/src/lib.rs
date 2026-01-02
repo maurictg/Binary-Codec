@@ -115,6 +115,14 @@ enum VariantByBool {
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
+enum CustomDiscriminator {
+    A = 3,
+    B,
+    C = 12,
+    D
+}
+
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
 struct ContainsBool {
     #[toggles("boolean")]
     flag: bool,
@@ -130,6 +138,23 @@ mod tests {
     use binary_codec::{BinaryDeserializer, BinarySerializer, SerializerConfig};
 
     use super::*;
+
+    #[test]
+    fn test_custom_discriminator() {
+        let a = CustomDiscriminator::A;
+        let b: CustomDiscriminator = CustomDiscriminator::B;
+        let c = CustomDiscriminator::C;
+        let d: CustomDiscriminator = CustomDiscriminator::D;
+        let bytes_a = BinarySerializer::<()>::to_bytes(&a, None).unwrap();
+        let bytes_b = BinarySerializer::<()>::to_bytes(&b, None).unwrap();
+        let bytes_c: Vec<u8> = BinarySerializer::<()>::to_bytes(&c, None).unwrap();
+        let bytes_d: Vec<u8> = BinarySerializer::<()>::to_bytes(&d, None).unwrap();
+
+        assert_eq!(bytes_a, vec![3]);
+        assert_eq!(bytes_b, vec![4]);
+        assert_eq!(bytes_c, vec![12]);
+        assert_eq!(bytes_d, vec![13]);
+    }
 
     #[test]
     fn testenum() {
