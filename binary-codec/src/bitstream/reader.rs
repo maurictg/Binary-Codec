@@ -2,20 +2,47 @@ use std::cmp::min;
 
 use crate::{DeserializationError, encoding::fixed_int::FixedInt};
 
+pub trait StreamDecrypter {
+    fn decrypt_byte(&mut self, b: u8) -> u8;
+    fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8];
+}
+
 pub struct BitStreamReader<'a> {
     buffer: &'a [u8],
     bit_pos: usize,
+    last_read_byte: Option<u8>,
+    crypto: Option<Box<dyn StreamDecrypter>>,
 }
 
 impl<'a> BitStreamReader<'a> {
     /// Create a new LSB-first reader
     pub fn new(buffer: &'a [u8]) -> Self {
-        Self { buffer, bit_pos: 0 }
+        Self {
+            buffer,
+            bit_pos: 0,
+            crypto: None,
+            last_read_byte: None,
+        }
     }
 
     /// Get byte position of reader
     pub fn byte_pos(&self) -> usize {
         self.bit_pos / 8
+    }
+
+    /// Get current byte, from last_read_byte cache or from buffer
+    fn current_byte(&mut self) -> u8 {
+        if let Some(b) = self.last_read_byte {
+            b
+        } else {
+            let mut b = self.buffer[self.byte_pos()];
+            if let Some(crypto) = self.crypto.as_mut() {
+                b = crypto.decrypt_byte(b);
+            }
+
+            self.last_read_byte = Some(b);
+            b
+        }
     }
 
     /// Read a single bit
@@ -45,7 +72,7 @@ impl<'a> BitStreamReader<'a> {
             // Example: if bit_offset = 2 and bits_in_current_byte = 3,
             // mask = 00011100 (only bits 2,3,4 are 1)
             let mask = ((1 << bits_in_current_byte) - 1) << bit_offset;
-            let byte_val = self.buffer[self.byte_pos()];
+            let byte_val = self.current_byte();
 
             // Apply the mask to isolate the bits and shift them to LSB
             // Example: byte_val = 10101100, mask = 00011100
@@ -63,6 +90,11 @@ impl<'a> BitStreamReader<'a> {
             shift += bits_in_current_byte;
 
             self.bit_pos += bits_in_current_byte as usize;
+
+            // If crossed byte boundary, reset last read byte
+            if self.bit_pos % 8 == 0 {
+                self.last_read_byte = None;
+            }
         }
 
         Ok(result)
@@ -76,13 +108,15 @@ impl<'a> BitStreamReader<'a> {
             return Err(DeserializationError::NotEnoughBytes(1));
         }
 
-        let b = self.buffer[self.byte_pos()];
+        let byte = self.current_byte();
         self.bit_pos += 8;
-        Ok(b)
+        self.last_read_byte = None;
+        
+        Ok(byte)
     }
 
     /// Read a slice of bytes, aligning first
-    pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], DeserializationError> {
+    pub fn read_bytes(&mut self, count: usize) -> Result<&[u8], DeserializationError> {
         self.align_byte();
 
         let start = self.byte_pos();
@@ -93,8 +127,14 @@ impl<'a> BitStreamReader<'a> {
         }
 
         self.bit_pos += 8 * count;
+        self.last_read_byte = None;
 
-        Ok(&self.buffer[start..start + count])
+        let slice = &self.buffer[start..start + count];
+        if let Some(crypto) = self.crypto.as_mut() {
+            Ok(crypto.decrypt_slice(slice))
+        } else {
+            Ok(slice)
+        }
     }
 
     /// Read a dynamic int, starting at the next byte bounary
@@ -132,6 +172,7 @@ impl<'a> BitStreamReader<'a> {
         let rem = self.bit_pos % 8;
         if rem != 0 {
             self.bit_pos += 8 - rem;
+            self.last_read_byte = None;
         }
     }
 
@@ -153,9 +194,43 @@ impl<'a> BitStreamReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::DeserializationError;
+    use crate::{DeserializationError, bitstream::reader::StreamDecrypter};
 
     use super::BitStreamReader;
+
+    struct PlusOneDecrypter {
+        plain: Vec<u8>
+    }
+
+    impl StreamDecrypter for PlusOneDecrypter {
+        fn decrypt_byte(&mut self, b: u8) -> u8 {
+            self.plain.push(b + 1);
+            *self.plain.last().unwrap()
+        }
+    
+        fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8] {
+            let d = slice.iter().map(|s|s + 1);
+            self.plain.extend(d);
+            &self.plain[self.plain.len() - slice.len()..]
+        }
+    }
+
+    #[test]
+    fn test_decrypt_bytes() {
+        let buf = vec![1,2,3,4,5,6,7,8,9,10];
+        let mut reader = BitStreamReader::new(&buf);
+        reader.crypto = Some(Box::new(PlusOneDecrypter { plain: Vec::new() }));
+        
+        assert_eq!(reader.read_byte(), Ok(2));
+        assert_eq!(reader.read_byte(), Ok(3));
+        assert_eq!(reader.read_byte(), Ok(4));
+        // 4 = 00000100, +1 = 00000101
+        assert_eq!(reader.read_bit(), Ok(true));
+        assert_eq!(reader.read_bit(), Ok(false));
+        assert_eq!(reader.read_bit(), Ok(true));
+        assert_eq!(reader.read_bytes(5), Ok(&[6,7,8,9,10][..]));
+        assert_eq!(reader.read_byte(), Ok(11));
+    }
 
     /// Helper to build buffers
     fn make_buffer() -> Vec<u8> {
