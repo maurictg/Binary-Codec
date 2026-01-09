@@ -82,8 +82,9 @@ fn generate_field_serializer(
     };
 
     let mut toggle_key = None;
-    let mut variant_key = None;
-    let mut length_key = None;
+    // allow multiple variant_for / length_for entries
+    let mut variant_keys: Vec<String> = Vec::new();
+    let mut length_keys: Vec<String> = Vec::new();
     let mut toggled_by = None;
     let mut variant_by = None;
     let mut length_by = None;
@@ -104,8 +105,16 @@ fn generate_field_serializer(
             Some("val_dyn_length") => val_dyn_length = true,
             Some("multi_enum") => multi_enum = true,
             Some("toggles") => toggle_key = get_string_value_from_attribute(attr),
-            Some("variant_for") => variant_key = get_string_value_from_attribute(attr),
-            Some("length_for") => length_key = get_string_value_from_attribute(attr),
+            Some("variant_for") => {
+                if let Some(v) = get_string_value_from_attribute(attr) {
+                    variant_keys.push(v);
+                }
+            }
+            Some("length_for") => {
+                if let Some(v) = get_string_value_from_attribute(attr) {
+                    length_keys.push(v);
+                }
+            }
             Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
             Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
             Some("length_by") => length_by = get_string_value_from_attribute(attr),
@@ -146,20 +155,26 @@ fn generate_field_serializer(
         quote! {}
     };
 
-    // Runtime length_key
-    let length = if let Some(key) = length_key {
-        quote! {
-            _p_config.set_length(#key, #val_reference as usize);
-        }
+    // Runtime length_for keys (support multiple)
+    let length_calls: Vec<proc_macro2::TokenStream> = length_keys
+        .iter()
+        .map(|k| quote! { _p_config.set_length(#k, #val_reference as usize); })
+        .collect();
+
+    let length = if !length_calls.is_empty() {
+        quote! { #(#length_calls)* }
     } else {
         quote! {}
     };
 
-    // Runtime variant_key
-    let variant = if let Some(key) = variant_key {
-        quote! {
-            _p_config.set_variant(#key, #val_reference as u8);
-        }
+    // Runtime variant_for keys (support multiple)
+    let variant_calls: Vec<proc_macro2::TokenStream> = variant_keys
+        .iter()
+        .map(|k| quote! { _p_config.set_variant(#k, #val_reference as u8); })
+        .collect();
+
+    let variant = if !variant_calls.is_empty() {
+        quote! { #(#variant_calls)* }
     } else {
         quote! {}
     };

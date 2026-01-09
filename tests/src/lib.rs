@@ -18,6 +18,7 @@ struct ExampleObject {
     eventual2: Option<Nested>,
 
     #[length_for = "len"]
+    #[length_for = "len2"]
     #[bits = 3]
     length: u8,
 
@@ -28,7 +29,7 @@ struct ExampleObject {
 
     boollie: bool,
 
-    #[length_by("len")]
+    #[length_by("len2")]
     str: String,
 
     #[dyn_length]
@@ -41,7 +42,7 @@ struct ExampleObject {
     #[dyn_int]
     dyn_int: u64,
 
-    data: [u8; 16]
+    data: [u8; 16],
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -119,7 +120,7 @@ enum CustomDiscriminator {
     A = 3,
     B,
     C = 12,
-    D
+    D,
 }
 
 #[derive(ToBytes, FromBytes, Debug, PartialEq)]
@@ -210,6 +211,28 @@ mod tests {
 
         assert_eq!(c, c1d);
         assert_eq!(c2, c2d);
+    }
+
+    #[test]
+    fn can_do_single_multienum() {
+        #[derive(ToBytes, FromBytes, Debug, PartialEq)]
+        #[no_discriminator]
+        enum MyMultiEnum {
+            #[toggled_by = "a"]
+            A,
+            #[toggled_by = "b"]
+            B,
+            #[toggled_by = "c"]
+            C,
+        }
+
+        #[derive(ToBytes, FromBytes, Debug, PartialEq)]
+        struct MyStruct {
+            var: u8,
+
+            #[variant_by = "variant"]
+            mme: MyMultiEnum
+        }
     }
 
     #[test]
