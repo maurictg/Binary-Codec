@@ -1,6 +1,11 @@
 pub mod reader;
 pub mod writer;
 
+pub trait CryptoStream {
+    fn decrypt_byte(&mut self, b: u8) -> u8;
+    fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8];
+}
+
 #[cfg(test)]
 mod tests {
     use crate::bitstream::{reader::BitStreamReader, writer::BitStreamWriter};

@@ -70,6 +70,6 @@ pub mod encoding;
 pub mod utils;
 
 pub use binary_codec_derive::{FromBytes, ToBytes};
-pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter};
+pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter, CryptoStream};
 pub use config::SerializerConfig;
 pub use encoding::zigzag::ZigZag;

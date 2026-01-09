@@ -1,17 +1,12 @@
 use std::cmp::min;
 
-use crate::{DeserializationError, encoding::fixed_int::FixedInt};
-
-pub trait StreamDecrypter {
-    fn decrypt_byte(&mut self, b: u8) -> u8;
-    fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8];
-}
+use crate::{DeserializationError, bitstream::CryptoStream, encoding::fixed_int::FixedInt};
 
 pub struct BitStreamReader<'a> {
     buffer: &'a [u8],
     bit_pos: usize,
     last_read_byte: Option<u8>,
-    crypto: Option<Box<dyn StreamDecrypter>>,
+    crypto: Option<Box<dyn CryptoStream>>,
 }
 
 impl<'a> BitStreamReader<'a> {
@@ -194,7 +189,7 @@ impl<'a> BitStreamReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{DeserializationError, bitstream::reader::StreamDecrypter};
+    use crate::{DeserializationError, bitstream::CryptoStream};
 
     use super::BitStreamReader;
 
@@ -202,7 +197,7 @@ mod tests {
         plain: Vec<u8>
     }
 
-    impl StreamDecrypter for PlusOneDecrypter {
+    impl CryptoStream for PlusOneDecrypter {
         fn decrypt_byte(&mut self, b: u8) -> u8 {
             self.plain.push(b + 1);
             *self.plain.last().unwrap()
