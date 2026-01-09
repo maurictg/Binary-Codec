@@ -82,6 +82,17 @@ impl<T: Clone> SerializerConfig<T> {
         self.variant_keys.insert(key.to_string(), value);
     }
 
+     /// Variant toggle setting: key_name=1|2|3|4
+    pub fn get_variant_toggle(&mut self, setting: &str) -> Option<bool> {
+        let mut parts = setting.split("=");
+        let key = parts.next().expect("key=discriminators");
+        let discs: Vec<u8> = parts.next().expect("key=discriminators").split("|")
+            .map(|v| v.parse().expect("a valid u8")).collect();
+
+        let variant = self.get_variant(key)?;
+        Some(discs.contains(&variant))
+    }
+
     pub fn get_toggle(&self, key: &str) -> Option<bool> {
         if key.starts_with('!') {
             let key = &key[1..];

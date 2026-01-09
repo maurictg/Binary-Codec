@@ -16,6 +16,7 @@ use syn::{
         val_dyn_length,
         toggles,
         toggled_by,
+        toggled_by_variant,
         length_for,
         length_by,
         variant_for,
@@ -38,6 +39,7 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
         dyn_length,
         toggles,
         toggled_by,
+        toggled_by_variant,
         length_for,
         length_by,
         variant_for,
@@ -85,6 +87,7 @@ fn generate_field_serializer(
     // allow multiple variant_for / length_for entries
     let mut variant_keys: Vec<String> = Vec::new();
     let mut length_keys: Vec<String> = Vec::new();
+    let mut toggled_by_variant = None;
     let mut toggled_by = None;
     let mut variant_by = None;
     let mut length_by = None;
@@ -116,6 +119,7 @@ fn generate_field_serializer(
                 }
             }
             Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
+            Some("toggled_by_variant") => toggled_by_variant = get_string_value_from_attribute(attr),
             Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
             Some("length_by") => length_by = get_string_value_from_attribute(attr),
             Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
@@ -214,6 +218,7 @@ fn generate_field_serializer(
         field_ident,
         bits_count,
         toggled_by,
+        toggled_by_variant,
         variant_by,
         length_by,
         is_dynamic_int,
@@ -552,6 +557,7 @@ fn generate_code_for_handling_field(
     field_name: &syn::Ident,
     bits_count: Option<u8>,
     toggled_by: Option<String>,
+    toggled_by_variant: Option<String>,
     variant_by: Option<String>,
     length_by: Option<String>,
     is_dynamic_int: bool,
@@ -724,6 +730,7 @@ fn generate_code_for_handling_field(
                             field_name,
                             bits_count,
                             None,
+                            None,
                             variant_by,
                             length_by,
                             is_dynamic_int,
@@ -755,6 +762,7 @@ fn generate_code_for_handling_field(
                             field_name,
                             bits_count,
                             None,
+                            None,
                             variant_by,
                             length_by,
                             is_dynamic_int,
@@ -765,6 +773,7 @@ fn generate_code_for_handling_field(
                             false,
                             level + 1,
                         );
+
                         let option_name: syn::Ident = format_ident!("__option_{}", level);
 
                         if let Some(toggled_by) = toggled_by {
@@ -790,7 +799,30 @@ fn generate_code_for_handling_field(
                                     }
                                 }
                             }
-                        } else {
+                        } else if let Some(toggled_by_variant) = toggled_by_variant {
+                            // If toggled_by_variant is set, read or write it
+                            let toggled_by = quote! {
+                                _p_config.get_variant_toggle(#toggled_by_variant).unwrap_or(false)
+                            };
+
+                            if read {
+                                quote! {
+                                    let mut #option_name: Option<#inner_type> = None;
+                                    if #toggled_by {
+                                        #handle
+                                        #option_name = Some(_p_val);
+                                    }
+                                    let _p_val = #option_name;
+                                }
+                            } else {
+                                quote! {
+                                    if #toggled_by {
+                                        let _p_val = _p_val.as_ref().expect("Expected Some value, because toggled_by_variant field evalutates to true");
+                                        #handle
+                                    }
+                                }
+                            }
+                        }   else {
                             // If space available, read it, write it if not None
                             if read {
                                 quote! {
@@ -875,6 +907,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             is_dynamic_int,
                             val_dyn_length,
                             false,
@@ -954,6 +987,7 @@ fn generate_code_for_handling_field(
                             None,
                             None,
                             None,
+                            None,
                             is_dynamic_int,
                             key_dyn_length,
                             false,
@@ -967,6 +1001,7 @@ fn generate_code_for_handling_field(
                             read,
                             value_type,
                             field_name,
+                            None,
                             None,
                             None,
                             None,
@@ -1081,6 +1116,7 @@ fn generate_code_for_handling_field(
                         None,
                         None,
                         None,
+                        None,
                         is_dynamic_int,
                         val_dyn_length,
                         false,
@@ -1116,6 +1152,7 @@ fn generate_code_for_handling_field(
                     array_type,
                     field_name,
                     bits_count,
+                    None,
                     None,
                     None,
                     None,

@@ -137,6 +137,18 @@ struct SliceArray {
     slices: Vec<[u8; 3]>,
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct ToggledByVariant {
+    #[variant_for = "test"]
+    num: u8,
+
+    #[toggled_by_variant = "test=2|4|6"]
+    even: Option<u8>,
+
+    #[toggled_by_variant = "test=1|3|5"]
+    uneven: Option<u16>
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -144,6 +156,31 @@ mod tests {
     use binary_codec::{BinaryDeserializer, BinarySerializer, SerializerConfig};
 
     use super::*;
+
+    #[test]
+    fn test_toggled_by_variant() {
+        let t1 = ToggledByVariant {
+            num: 1,
+            even: None,
+            uneven: Some(5)
+        };
+
+        let t2 = ToggledByVariant {
+            num: 2,
+            even: Some(5),
+            uneven: None
+        };
+
+        let config: Option<&mut SerializerConfig> = None;
+        let t1s = t1.to_bytes(config).unwrap();
+        let config: Option<&mut SerializerConfig> = None;
+        assert_eq!(ToggledByVariant::from_bytes(&t1s, config).unwrap(), t1);
+
+        let config: Option<&mut SerializerConfig> = None;
+        let t2s = t2.to_bytes(config).unwrap();
+        let config: Option<&mut SerializerConfig> = None;
+        assert_eq!(ToggledByVariant::from_bytes(&t2s, config).unwrap(), t2);
+    }
 
     #[test]
     fn test_custom_discriminator() {
