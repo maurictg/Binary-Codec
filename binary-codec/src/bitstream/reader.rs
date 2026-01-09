@@ -20,6 +20,11 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
+    /// Set crypto stream
+    pub fn set_crypto(&mut self, crypto: Option<Box<dyn CryptoStream>>) {
+        self.crypto = crypto;
+    }
+
     /// Get byte position of reader
     pub fn byte_pos(&self) -> usize {
         self.bit_pos / 8
