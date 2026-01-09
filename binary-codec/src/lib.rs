@@ -69,8 +69,7 @@ mod config;
 pub mod encoding;
 pub mod utils;
 
-pub use encoding::zigzag::ZigZag;
-pub use config::SerializerConfig;
-pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter};
 pub use binary_codec_derive::{FromBytes, ToBytes};
-
+pub use bitstream::{reader::BitStreamReader, writer::BitStreamWriter};
+pub use config::SerializerConfig;
+pub use encoding::zigzag::ZigZag;

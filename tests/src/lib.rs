@@ -132,6 +132,11 @@ struct ContainsBool {
     value: VariantByBool,
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct SliceArray {
+    slices: Vec<[u8; 3]>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -155,6 +160,19 @@ mod tests {
         assert_eq!(bytes_b, vec![4]);
         assert_eq!(bytes_c, vec![12]);
         assert_eq!(bytes_d, vec![13]);
+    }
+
+    #[test]
+    fn test_multi_slice() {
+        let bytes = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let config: Option<&mut SerializerConfig> = None;
+        let sa = SliceArray::from_bytes(&bytes, config).unwrap();
+        assert_eq!(
+            sa,
+            SliceArray {
+                slices: vec![[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+            }
+        )
     }
 
     #[test]
@@ -231,7 +249,7 @@ mod tests {
             var: u8,
 
             #[variant_by = "variant"]
-            mme: MyMultiEnum
+            mme: MyMultiEnum,
         }
     }
 

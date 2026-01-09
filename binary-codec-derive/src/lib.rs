@@ -260,23 +260,23 @@ fn generate_struct_serializer(
 
         // read bytes code
         quote! {
-                impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
-                    fn read_bytes(
-                        stream: &mut binary_codec::BitStreamReader,
-                        config: Option<&mut binary_codec::SerializerConfig<T>>,
-                    ) -> Result<Self, #error_type> {
-                        let mut _new_config = binary_codec::SerializerConfig::new(None);
-                        let _p_config = config.unwrap_or(&mut _new_config);
-                        let _p_stream = stream;
+            impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
+                fn read_bytes(
+                    stream: &mut binary_codec::BitStreamReader,
+                    config: Option<&mut binary_codec::SerializerConfig<T>>,
+                ) -> Result<Self, #error_type> {
+                    let mut _new_config = binary_codec::SerializerConfig::new(None);
+                    let _p_config = config.unwrap_or(&mut _new_config);
+                    let _p_stream = stream;
 
-                        #(#field_serializations)*
+                    #(#field_serializations)*
 
-                        Ok(Self {
-                            #(#vars),*
-                        })
-                    }
+                    Ok(Self {
+                        #(#vars),*
+                    })
                 }
             }
+        }
     } else {
         // write bytes code
         quote! {
@@ -327,9 +327,12 @@ fn generate_enum_serializer(
     for variant in data_enum.variants.iter() {
         let val = if let Some((_, expr)) = &variant.discriminant {
             match expr {
-                syn::Expr::Lit(syn::ExprLit { lit: Lit::Int(lit_int), .. }) => {
-                    lit_int.base10_parse::<u8>().expect("Invalid discriminant integer")
-                }
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: Lit::Int(lit_int),
+                    ..
+                }) => lit_int
+                    .base10_parse::<u8>()
+                    .expect("Invalid discriminant integer"),
                 _ => panic!("Discriminant must be an integer literal"),
             }
         } else {
@@ -815,7 +818,8 @@ fn generate_code_for_handling_field(
                         if let Type::Path(inner_path) = inner_type {
                             if let Some(inner_ident) = inner_path.path.get_ident() {
                                 if inner_ident == "u8" {
-                                    let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
+                                    let (has_size, size_key) =
+                                        generate_size_key(length_by, has_dynamic_length);
 
                                     if read {
                                         if has_size || multi_enum {
@@ -831,16 +835,16 @@ fn generate_code_for_handling_field(
                                                 }
                                             };
 
-                                            quote! {
+                                            return quote! {
                                                 #len_code
                                                 let _p_val = _p_stream.read_bytes(_p_len)?.to_vec();
-                                            }
+                                            };
                                         } else {
                                             // read all remaining bytes
-                                            quote! {
+                                            return quote! {
                                                 let _p_len = _p_stream.bytes_left();
                                                 let _p_val = _p_stream.read_bytes(_p_len)?.to_vec();
-                                            }
+                                            };
                                         }
                                     } else {
                                         // write path: if sized, write size first
@@ -853,93 +857,89 @@ fn generate_code_for_handling_field(
                                             quote! {}
                                         };
 
-                                        quote! {
+                                        return quote! {
                                             #write_size
                                             _p_stream.write_bytes(_p_val);
-                                        }
-                                    }
-                                } else {
-                                    // Fallback to element-wise handling for non-u8 inner types
-                                    let handle = generate_code_for_handling_field(
-                                        read,
-                                        inner_type,
-                                        field_name,
-                                        bits_count,
-                                        None,
-                                        None,
-                                        None,
-                                        is_dynamic_int,
-                                        val_dyn_length,
-                                        false,
-                                        false,
-                                        multi_enum,
-                                        true,
-                                        level + 1,
-                                    );
-
-                                    let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
-
-                                    let write_code = quote! {
-                                        for _p_val in _p_val {
-                                            #handle
-                                        }
-                                    };
-
-                                    if has_size || (read && multi_enum) {
-                                        if read {
-                                            let len_code = if multi_enum && let Type::Path(path) = inner_type {
-                                                let enum_ident = path
-                                                    .path
-                                                    .get_ident()
-                                                    .expect("Expected ident for multi_enum inner type");
-                                                quote! {
-                                                    #enum_ident::configure_multi_disc(_p_config);
-                                                    let _p_len = _p_config.get_multi_disc_size(stringify!(#enum_ident));
-                                                }
-                                            } else {
-                                                quote! {
-                                                    let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
-                                                }
-                                            };
-
-                                            quote! {
-                                                #len_code
-                                                let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
-                                                for _ in 0.._p_len {
-                                                    #handle
-                                                    #vec_name.push(_p_val);
-                                                }
-                                                let _p_val = #vec_name;
-                                            }
-                                        } else {
-                                            quote! {
-                                                let _p_len = _p_val.len();
-                                                binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
-                                                #write_code
-                                            }
-                                        }
-                                    } else {
-                                        if read {
-                                            quote! {
-                                                let mut #vec_name = Vec::<#inner_type>::new();
-                                                while _p_stream.bytes_left() > 0 {
-                                                    #handle
-                                                    #vec_name.push(_p_val);
-                                                }
-                                                let _p_val = #vec_name;
-                                            }
-                                        } else {
-                                            quote! {
-                                                #write_code
-                                            }
-                                        }
+                                        };
                                     }
                                 }
+                            }
+                        }
+
+                        // Fallback to element-wise handling for non-u8 inner types
+                        let handle = generate_code_for_handling_field(
+                            read,
+                            inner_type,
+                            field_name,
+                            bits_count,
+                            None,
+                            None,
+                            None,
+                            is_dynamic_int,
+                            val_dyn_length,
+                            false,
+                            false,
+                            multi_enum,
+                            true,
+                            level + 1,
+                        );
+
+                        let (has_size, size_key) = generate_size_key(length_by, has_dynamic_length);
+
+                        let write_code = quote! {
+                            for _p_val in _p_val {
+                                #handle
+                            }
+                        };
+
+                        if has_size || (read && multi_enum) {
+                            if read {
+                                let len_code = if multi_enum && let Type::Path(path) = inner_type {
+                                    let enum_ident = path
+                                        .path
+                                        .get_ident()
+                                        .expect("Expected ident for multi_enum inner type");
+                                    quote! {
+                                        #enum_ident::configure_multi_disc(_p_config);
+                                        let _p_len = _p_config.get_multi_disc_size(stringify!(#enum_ident));
+                                    }
+                                } else {
+                                    quote! {
+                                        let _p_len = binary_codec::utils::get_read_size(_p_stream, #size_key, _p_config)?;
+                                    }
+                                };
+
+                                quote! {
+                                    #len_code
+                                    let mut #vec_name = Vec::<#inner_type>::with_capacity(_p_len);
+                                    for _ in 0.._p_len {
+                                        #handle
+                                        #vec_name.push(_p_val);
+                                    }
+                                    let _p_val = #vec_name;
+                                }
                             } else {
-                                panic!("Unsupported inner type for Vec");
+                                quote! {
+                                    let _p_len = _p_val.len();
+                                    binary_codec::utils::write_size(_p_len, #size_key, _p_stream, _p_config)?;
+                                    #write_code
+                                }
                             }
                         } else {
-                            panic!("Unsupported inner type for Vec");
+                            if read {
+                                quote! {
+                                    let mut #vec_name = Vec::<#inner_type>::new();
+                                    while _p_stream.bytes_left() > 0 {
+                                        #handle
+                                        #vec_name.push(_p_val);
+                                    }
+                                    let _p_val = #vec_name;
+                                }
+                            } else {
+                                quote! {
+                                    #write_code
+                                }
+                            }
                         }
                     }
                     "HashMap" => {

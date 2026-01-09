@@ -1,5 +1,5 @@
 use crate::{
-    BitStreamReader, BitStreamWriter, DeserializationError, SerializationError, SerializerConfig
+    BitStreamReader, BitStreamWriter, DeserializationError, SerializationError, SerializerConfig,
 };
 
 pub fn get_read_size<'a, T: Clone>(
@@ -12,9 +12,7 @@ pub fn get_read_size<'a, T: Clone>(
             return stream.read_dyn_int().map(|v| v as usize);
         }
 
-        config
-            .get_length(size_key)
-            .unwrap_or(stream.bytes_left())
+        config.get_length(size_key).unwrap_or(stream.bytes_left())
     } else {
         stream.bytes_left()
     };
@@ -31,7 +29,7 @@ pub fn write_size<T: Clone>(
     if let Some(size_key) = size_key {
         if size_key == "__dynamic" {
             stream.write_dyn_int(size as u128);
-            return Ok(())
+            return Ok(());
         }
 
         if let Some(expected) = config.get_length(size_key) {

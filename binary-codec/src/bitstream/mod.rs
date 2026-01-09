@@ -17,7 +17,7 @@ mod tests {
         writer.write_bytes(&[34, 56]);
 
         assert_eq!(writer.byte_pos(), 4);
-        
+
         let mut reader = BitStreamReader::new(&buffer);
         assert_eq!(reader.read_bit().unwrap(), true);
         assert_eq!(reader.read_bit().unwrap(), false);
