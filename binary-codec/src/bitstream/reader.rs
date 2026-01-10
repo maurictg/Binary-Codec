@@ -6,23 +6,45 @@ pub struct BitStreamReader<'a> {
     buffer: &'a [u8],
     bit_pos: usize,
     last_read_byte: Option<u8>,
+    offset_end: usize,
     crypto: Option<Box<dyn CryptoStream>>,
 }
 
 impl<'a> BitStreamReader<'a> {
     /// Create a new LSB-first reader
+    ///
+    /// # Properties
+    /// - `buffer`: The buffer to read from
     pub fn new(buffer: &'a [u8]) -> Self {
         Self {
             buffer,
             bit_pos: 0,
             crypto: None,
+            offset_end: 0,
             last_read_byte: None,
         }
+    }
+
+    /// Return slice from reading position (or start, if `from_start` is true) to offset-end
+    pub fn slice(&self, from_start: bool) -> &[u8] {
+        let start = if from_start { 0 } else { self.byte_pos() };
+
+        &self.buffer[start..self.buffer.len() - self.offset_end]
+    }
+
+    /// Return slice from offset-end to end of buffer
+    pub fn slice_end(&self) -> &[u8] {
+        &self.buffer[self.buffer.len() - self.offset_end..]
     }
 
     /// Set crypto stream
     pub fn set_crypto(&mut self, crypto: Option<Box<dyn CryptoStream>>) {
         self.crypto = crypto;
+    }
+
+    /// Set integrity offset to ignore when reading
+    pub fn set_offset_end(&mut self, len: usize) {
+        self.offset_end = len;
     }
 
     /// Get byte position of reader
@@ -58,7 +80,7 @@ impl<'a> BitStreamReader<'a> {
         let mut shift = 0;
 
         while bits > 0 {
-            if self.byte_pos() >= self.buffer.len() {
+            if self.byte_pos() >= self.buffer.len() - self.offset_end {
                 return Err(DeserializationError::NotEnoughBytes(1));
             }
 
@@ -104,14 +126,14 @@ impl<'a> BitStreamReader<'a> {
     pub fn read_byte(&mut self) -> Result<u8, DeserializationError> {
         self.align_byte();
 
-        if self.byte_pos() >= self.buffer.len() {
+        if self.byte_pos() >= self.buffer.len() - self.offset_end {
             return Err(DeserializationError::NotEnoughBytes(1));
         }
 
         let byte = self.current_byte();
         self.bit_pos += 8;
         self.last_read_byte = None;
-        
+
         Ok(byte)
     }
 
@@ -120,7 +142,7 @@ impl<'a> BitStreamReader<'a> {
         self.align_byte();
 
         let start = self.byte_pos();
-        if start + count > self.buffer.len() {
+        if start + count > self.buffer.len() - self.offset_end {
             return Err(DeserializationError::NotEnoughBytes(
                 start + count - self.buffer.len(),
             ));
@@ -178,7 +200,7 @@ impl<'a> BitStreamReader<'a> {
 
     /// Get bytes left
     pub fn bytes_left(&self) -> usize {
-        let left = self.buffer.len() - self.byte_pos();
+        let left = self.buffer.len() - self.byte_pos() - self.offset_end;
         if self.bit_pos % 8 != 0 {
             left - 1 // If not aligned, we can't read the last byte fully
         } else {
@@ -199,7 +221,7 @@ mod tests {
     use super::BitStreamReader;
 
     struct PlusOneDecrypter {
-        plain: Vec<u8>
+        plain: Vec<u8>,
     }
 
     impl CryptoStream for PlusOneDecrypter {
@@ -207,9 +229,9 @@ mod tests {
             self.plain.push(b + 1);
             *self.plain.last().unwrap()
         }
-    
+
         fn apply_keystream(&mut self, slice: &[u8]) -> &[u8] {
-            let d = slice.iter().map(|s|s + 1);
+            let d = slice.iter().map(|s| s + 1);
             self.plain.extend(d);
             &self.plain[self.plain.len() - slice.len()..]
         }
@@ -217,10 +239,10 @@ mod tests {
 
     #[test]
     fn test_decrypt_bytes() {
-        let buf = vec![1,2,3,4,5,6,7,8,9,10];
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let mut reader = BitStreamReader::new(&buf);
         reader.crypto = Some(Box::new(PlusOneDecrypter { plain: Vec::new() }));
-        
+
         assert_eq!(reader.read_byte(), Ok(2));
         assert_eq!(reader.read_byte(), Ok(3));
         assert_eq!(reader.read_byte(), Ok(4));
@@ -228,7 +250,7 @@ mod tests {
         assert_eq!(reader.read_bit(), Ok(true));
         assert_eq!(reader.read_bit(), Ok(false));
         assert_eq!(reader.read_bit(), Ok(true));
-        assert_eq!(reader.read_bytes(5), Ok(&[6,7,8,9,10][..]));
+        assert_eq!(reader.read_bytes(5), Ok(&[6, 7, 8, 9, 10][..]));
         assert_eq!(reader.read_byte(), Ok(11));
     }
 
@@ -399,5 +421,31 @@ mod tests {
         assert_eq!(reader.bytes_left(), 1); // now 1 bytes left
         reader.read_bit().unwrap(); // read one bit
         assert_eq!(reader.bytes_left(), 0); // no full bytes left
+    }
+
+    #[test]
+    fn offset_end_ignores_bytes_and_can_slice() {
+        let buff = [1, 2, 3, 4, 5];
+        let mut reader = BitStreamReader::new(&buff);
+
+        reader.set_offset_end(2);
+        assert_eq!(reader.bytes_left(), 3);
+        assert_eq!(reader.read_byte(), Ok(1));
+
+        assert_eq!(reader.slice(true), &[1, 2, 3]);
+        assert_eq!(reader.slice(false), &[2, 3]);
+        assert_eq!(reader.slice_end(), &[4, 5]);
+
+        assert_eq!(reader.read_byte(), Ok(2));
+        assert_eq!(reader.read_byte(), Ok(3));
+        assert_eq!(
+            reader.read_byte(),
+            Err(DeserializationError::NotEnoughBytes(1))
+        );
+
+        reader.set_offset_end(0);
+        assert_eq!(reader.bytes_left(), 2);
+        assert_eq!(reader.read_byte(), Ok(4));
+        assert_eq!(reader.read_byte(), Ok(5));
     }
 }

@@ -18,6 +18,11 @@ impl<'a> BitStreamWriter<'a> {
         }
     }
 
+    /// Return slice of buffer
+    pub fn slice(&self) -> &[u8] {
+        &self.buffer
+    }
+
     /// Set crypto stream
     pub fn set_crypto(&mut self, crypto: Option<Box<dyn CryptoStream>>) {
         self.crypto = crypto;
