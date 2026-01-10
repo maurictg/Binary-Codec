@@ -1,16 +1,26 @@
 use std::cmp::min;
 
-use crate::encoding::fixed_int::FixedInt;
+use crate::{CryptoStream, encoding::fixed_int::FixedInt};
 
 pub struct BitStreamWriter<'a> {
     buffer: &'a mut Vec<u8>,
     bit_pos: usize,
+    crypto: Option<Box<dyn CryptoStream>>,
 }
 
 impl<'a> BitStreamWriter<'a> {
     /// Create a new LSB-first writer
     pub fn new(buffer: &'a mut Vec<u8>) -> Self {
-        Self { buffer, bit_pos: 0 }
+        Self {
+            buffer,
+            bit_pos: 0,
+            crypto: None,
+        }
+    }
+
+    /// Set crypto stream
+    pub fn set_crypto(&mut self, crypto: Option<Box<dyn CryptoStream>>) {
+        self.crypto = crypto;
     }
 
     /// Get byte position of writer
@@ -64,6 +74,14 @@ impl<'a> BitStreamWriter<'a> {
             val >>= bits_in_current_byte;
 
             self.bit_pos += bits_in_current_byte as usize;
+
+            // If full byte, encrypt it (if needed)
+            if self.bit_pos % 8 == 0 {
+                if let Some(crypto) = self.crypto.as_mut() {
+                    let b = self.buffer[byte_pos];
+                    self.buffer[byte_pos] = crypto.apply_keystream_byte(b);
+                }
+            }
         }
     }
 
@@ -73,6 +91,12 @@ impl<'a> BitStreamWriter<'a> {
         self.ensure_byte();
 
         let byte_pos = self.byte_pos();
+        let byte = if let Some(crypto) = self.crypto.as_mut() {
+            crypto.apply_keystream_byte(byte)
+        } else {
+            byte
+        };
+
         self.buffer[byte_pos] = byte;
         self.bit_pos += 8;
     }
@@ -80,7 +104,14 @@ impl<'a> BitStreamWriter<'a> {
     /// Write a slice of bytes, starting at the next byte boundary
     pub fn write_bytes(&mut self, data: &[u8]) {
         self.align_byte();
-        self.buffer.extend_from_slice(data);
+
+        if let Some(crypto) = self.crypto.as_mut() {
+            let encrypted = crypto.apply_keystream(data);
+            self.buffer.extend_from_slice(encrypted);
+        } else {
+            self.buffer.extend_from_slice(data);
+        }
+
         self.bit_pos += 8 * data.len();
     }
 
@@ -114,7 +145,13 @@ impl<'a> BitStreamWriter<'a> {
     pub fn align_byte(&mut self) {
         let rem = self.bit_pos % 8;
         if rem != 0 {
+            let byte_pos = self.byte_pos();
             self.bit_pos += 8 - rem;
+
+            // Encrypt byte
+            if let Some(crypto) = self.crypto.as_mut() {
+                self.buffer[byte_pos] = crypto.apply_keystream_byte(self.buffer[byte_pos]);
+            }
         }
     }
 
@@ -131,7 +168,45 @@ impl<'a> BitStreamWriter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::CryptoStream;
+
     use super::BitStreamWriter;
+
+    struct PlusOneEncrypter {
+        ciphertext: Vec<u8>
+    }
+
+    impl CryptoStream for PlusOneEncrypter {
+        fn apply_keystream_byte(&mut self, b: u8) -> u8 {
+            self.ciphertext.push(b + 1);
+            *self.ciphertext.last().unwrap()
+        }
+    
+        fn apply_keystream(&mut self, slice: &[u8]) -> &[u8] {
+            let d = slice.iter().map(|s|s + 1);
+            self.ciphertext.extend(d);
+            &self.ciphertext[self.ciphertext.len() - slice.len()..]
+        }
+    }
+
+    #[test]
+    fn test_encrypt_bytes() {
+        let mut buf = Vec::new();
+        let mut writer = BitStreamWriter::new(&mut buf);
+        writer.crypto = Some(Box::new(PlusOneEncrypter { ciphertext: Vec::new() }));
+
+        writer.write_byte(1);
+        writer.write_byte(2);
+        writer.write_byte(3);
+        writer.write_bit(false);
+        writer.write_bit(false);
+        writer.write_bit(true);
+        writer.write_bytes(&[5,6,7,8,9]);
+        writer.write_byte(10);
+
+        assert_eq!(buf, vec![2,3,4,5,6,7,8,9,10,11]);
+    }
+
 
     /// Helper to format buffer as binary strings
     fn buffer_to_bin(buffer: &[u8]) -> Vec<String> {

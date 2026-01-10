@@ -37,7 +37,7 @@ impl<'a> BitStreamReader<'a> {
         } else {
             let mut b = self.buffer[self.byte_pos()];
             if let Some(crypto) = self.crypto.as_mut() {
-                b = crypto.decrypt_byte(b);
+                b = crypto.apply_keystream_byte(b);
             }
 
             self.last_read_byte = Some(b);
@@ -131,7 +131,7 @@ impl<'a> BitStreamReader<'a> {
 
         let slice = &self.buffer[start..start + count];
         if let Some(crypto) = self.crypto.as_mut() {
-            Ok(crypto.decrypt_slice(slice))
+            Ok(crypto.apply_keystream(slice))
         } else {
             Ok(slice)
         }
@@ -203,12 +203,12 @@ mod tests {
     }
 
     impl CryptoStream for PlusOneDecrypter {
-        fn decrypt_byte(&mut self, b: u8) -> u8 {
+        fn apply_keystream_byte(&mut self, b: u8) -> u8 {
             self.plain.push(b + 1);
             *self.plain.last().unwrap()
         }
     
-        fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8] {
+        fn apply_keystream(&mut self, slice: &[u8]) -> &[u8] {
             let d = slice.iter().map(|s|s + 1);
             self.plain.extend(d);
             &self.plain[self.plain.len() - slice.len()..]

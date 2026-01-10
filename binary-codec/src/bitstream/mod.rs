@@ -2,8 +2,8 @@ pub mod reader;
 pub mod writer;
 
 pub trait CryptoStream {
-    fn decrypt_byte(&mut self, b: u8) -> u8;
-    fn decrypt_slice(&mut self, slice: &[u8]) -> &[u8];
+    fn apply_keystream_byte(&mut self, b: u8) -> u8;
+    fn apply_keystream(&mut self, slice: &[u8]) -> &[u8];
 }
 
 #[cfg(test)]
