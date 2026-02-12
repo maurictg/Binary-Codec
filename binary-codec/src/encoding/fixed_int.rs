@@ -119,6 +119,26 @@ impl FixedInt<16> for i128 {
     }
 }
 
+impl FixedInt<4> for f32 {
+    fn serialize(self) -> [u8; 4] {
+        self.to_be_bytes()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        f32::from_be_bytes(bytes.try_into().unwrap())
+    }
+}
+
+impl FixedInt<8> for f64 {
+    fn serialize(self) -> [u8; 8] {
+        self.to_be_bytes()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Self {
+        f64::from_be_bytes(bytes.try_into().unwrap())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::encoding::fixed_int::FixedInt;

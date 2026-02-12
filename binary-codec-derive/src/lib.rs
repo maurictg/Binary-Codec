@@ -119,7 +119,9 @@ fn generate_field_serializer(
                 }
             }
             Some("toggled_by") => toggled_by = get_string_value_from_attribute(attr),
-            Some("toggled_by_variant") => toggled_by_variant = get_string_value_from_attribute(attr),
+            Some("toggled_by_variant") => {
+                toggled_by_variant = get_string_value_from_attribute(attr)
+            }
             Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
             Some("length_by") => length_by = get_string_value_from_attribute(attr),
             Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
@@ -665,6 +667,13 @@ fn generate_code_for_handling_field(
                         }
                     }
                 }
+                "f32" | "f64" => {
+                    if read {
+                        quote! { let _p_val = _p_stream.read_fixed_int()?; }
+                    } else {
+                        quote! { _p_stream.write_fixed_int(*_p_val); }
+                    }
+                }
                 "String" => {
                     let size_key = generate_size_key(length_by, has_dynamic_length).1;
 
@@ -822,7 +831,7 @@ fn generate_code_for_handling_field(
                                     }
                                 }
                             }
-                        }   else {
+                        } else {
                             // If space available, read it, write it if not None
                             if read {
                                 quote! {

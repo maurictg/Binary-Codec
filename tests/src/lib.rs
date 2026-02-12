@@ -42,6 +42,8 @@ struct ExampleObject {
     #[dyn_int]
     dyn_int: u64,
 
+    float: f64,
+
     data: [u8; 16],
 }
 
@@ -310,6 +312,7 @@ mod tests {
                 m.insert(2, String::from("world!"));
                 m
             },
+            float: 3.14159,
             data: [0u8; 16],
         };
 
