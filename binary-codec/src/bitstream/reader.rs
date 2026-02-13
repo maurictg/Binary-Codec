@@ -75,6 +75,11 @@ impl<'a> BitStreamReader<'a> {
         self.crypto = crypto;
     }
 
+    /// Remove crypto stream
+    pub fn reset_crypto(&mut self) {
+        self.crypto = None;
+    }
+
     /// Set integrity offset to ignore when reading
     pub fn set_offset_end(&mut self, len: usize) {
         self.offset_end = len;
@@ -271,6 +276,10 @@ mod tests {
 
         fn get_cached(&self, original: bool) -> &[u8] {
             &self.plain
+        }
+        
+        fn replace(&mut self, other: Box<dyn CryptoStream>) {
+            self.plain = other.get_cached(true).to_vec();
         }
     }
 

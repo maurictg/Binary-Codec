@@ -53,6 +53,11 @@ impl<'a> BitStreamWriter<'a> {
         self.crypto = crypto;
     }
 
+     /// Remove crypto stream
+    pub fn reset_crypto(&mut self) {
+        self.crypto = None;
+    }
+
     /// Get byte position of writer
     pub fn byte_pos(&self) -> usize {
         self.bit_pos / 8
@@ -220,6 +225,10 @@ mod tests {
 
         fn get_cached(&self, original: bool) -> &[u8] {
             &[]
+        }
+        
+        fn replace(&mut self, other: Box<dyn CryptoStream>) {
+            self.ciphertext = other.get_cached(true).to_vec();
         }
     }
 
