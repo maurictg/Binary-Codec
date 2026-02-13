@@ -6,6 +6,7 @@ pub struct BitStreamWriter<'a> {
     buffer: &'a mut Vec<u8>,
     bit_pos: usize,
     crypto: Option<Box<dyn CryptoStream>>,
+    marker: Option<usize>,
 }
 
 impl<'a> BitStreamWriter<'a> {
@@ -15,12 +16,28 @@ impl<'a> BitStreamWriter<'a> {
             buffer,
             bit_pos: 0,
             crypto: None,
+            marker: None,
         }
     }
 
     /// Return slice of buffer
     pub fn slice(&self) -> &[u8] {
         &self.buffer
+    }
+
+    /// Set marker at specific position or current byte
+    pub fn set_marker(&mut self, pos: Option<usize>) {
+        self.marker = Some(pos.unwrap_or(self.byte_pos()));
+    }
+
+    /// Unset marker
+    pub fn reset_marker(&mut self) {
+        self.marker = None;
+    }
+
+    /// Return slice from marker (or start if marker is unset) to specific position or current byte
+    pub fn slice_marker(&self, to: Option<usize>) -> &[u8] {
+        &self.buffer[self.marker.unwrap_or(0)..to.unwrap_or(self.byte_pos())]
     }
 
     /// Set crypto stream
@@ -364,5 +381,20 @@ mod tests {
             ],
             buf
         );
+    }
+
+    #[test]
+    fn test_slice_marker() {
+        let mut buf = Vec::new();
+        let mut stream = BitStreamWriter::new(&mut buf);
+
+        stream.write_bytes(&[10, 20, 30, 40, 50]);
+        assert_eq!(stream.slice_marker(Some(4)), &[10,20,30,40]);
+
+        stream.set_marker(Some(2));
+        assert_eq!(stream.slice_marker(None), &[30, 40, 50]);
+
+        stream.set_marker(None);
+        assert_eq!(stream.slice_marker(None), &[]);
     }
 }

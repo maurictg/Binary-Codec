@@ -8,6 +8,7 @@ pub struct BitStreamReader<'a> {
     last_read_byte: Option<u8>,
     offset_end: usize,
     crypto: Option<Box<dyn CryptoStream>>,
+    marker: Option<usize>
 }
 
 impl<'a> BitStreamReader<'a> {
@@ -22,6 +23,7 @@ impl<'a> BitStreamReader<'a> {
             crypto: None,
             offset_end: 0,
             last_read_byte: None,
+            marker: None,
         }
     }
 
@@ -30,6 +32,21 @@ impl<'a> BitStreamReader<'a> {
         let start = if from_start { 0 } else { self.byte_pos() };
 
         &self.buffer[start..self.buffer.len() - self.offset_end]
+    }
+
+    /// Set marker at current byte
+    pub fn set_marker(&mut self) {
+        self.marker = Some(self.byte_pos());
+    }
+
+    /// Unset marker
+    pub fn reset_marker(&mut self) {
+        self.marker = None;
+    }
+
+    /// Return slice from marker (or start if marker is unset) to specific position or current byte
+    pub fn slice_marker(&self, to: Option<usize>) -> &[u8] {
+        &self.buffer[self.marker.unwrap_or(0)..to.unwrap_or(self.byte_pos())]
     }
 
     /// Return slice from offset-end to end of buffer
@@ -447,5 +464,39 @@ mod tests {
         assert_eq!(reader.bytes_left(), 2);
         assert_eq!(reader.read_byte(), Ok(4));
         assert_eq!(reader.read_byte(), Ok(5));
+    }
+
+    #[test]
+    fn test_slice_start() {
+        let buff = [10, 20, 30, 40, 50];
+        let mut reader = BitStreamReader::new(&buff);
+
+        assert_eq!(reader.slice_marker(None), &[]);
+
+        reader.read_byte().unwrap(); // Read 10
+        assert_eq!(reader.slice_marker(None), &[10]);
+
+        reader.read_small(4).unwrap(); // Read 4 bits of 20
+        assert_eq!(reader.slice_marker(None), &[10]);
+
+        reader.read_small(4).unwrap(); // Read remaining 4 bits of 20
+        assert_eq!(reader.slice_marker(None), &[10, 20]);
+
+        reader.read_bytes(2).unwrap(); // Read 30, 40
+        assert_eq!(reader.slice_marker(None), &[10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn test_slice_start_with_marker() {
+        let buff = [10, 20, 30, 40, 50];
+        let mut reader = BitStreamReader::new(&buff);
+
+        reader.read_byte().unwrap(); // Read 10
+        assert_eq!(reader.slice_marker(None), &[10]);
+        reader.set_marker();
+        assert_eq!(reader.slice_marker(None), &[]);
+
+        reader.read_bytes(2).unwrap(); // Read 20, 30
+        assert_eq!(reader.slice_marker(None), &[20, 30]);
     }
 }
