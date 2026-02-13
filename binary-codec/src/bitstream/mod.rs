@@ -14,7 +14,7 @@ pub trait CryptoStream {
     fn get_cached(&self, original: bool) -> &[u8];
 
     /// Extend the internal state of this crypto stream with another's.
-    fn replace(&mut self, other: Box<dyn CryptoStream>);
+    fn replace(&mut self, other: &Box<dyn CryptoStream>);
 }
 
 #[cfg(test)]

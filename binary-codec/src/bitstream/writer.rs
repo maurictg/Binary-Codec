@@ -49,8 +49,15 @@ impl<'a> BitStreamWriter<'a> {
     }
 
     /// Set crypto stream
-    pub fn set_crypto(&mut self, crypto: Option<Box<dyn CryptoStream>>) {
-        self.crypto = crypto;
+    pub fn set_crypto(&mut self, mut crypto: Option<Box<dyn CryptoStream>>) {
+        if let Some(existing) = self.crypto.as_ref()
+            && let Some(new_crypto) = crypto.as_mut()
+        {
+            new_crypto.replace(existing);
+            self.crypto = crypto;
+        } else {
+            self.crypto = crypto;
+        }
     }
 
      /// Remove crypto stream
@@ -227,7 +234,7 @@ mod tests {
             &[]
         }
         
-        fn replace(&mut self, other: Box<dyn CryptoStream>) {
+        fn replace(&mut self, other: &Box<dyn CryptoStream>) {
             self.ciphertext = other.get_cached(true).to_vec();
         }
     }
