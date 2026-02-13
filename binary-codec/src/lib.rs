@@ -31,17 +31,17 @@ pub enum DeserializationError {
     InvalidData(String),
 }
 
-pub trait BinarySerializer<T: Clone = ()> {
+pub trait BinarySerializer<T: Clone = (), E = SerializationError> {
     fn write_bytes(
         &self,
         stream: &mut BitStreamWriter,
         config: Option<&mut SerializerConfig<T>>,
-    ) -> Result<(), SerializationError>;
+    ) -> Result<(), E>;
 
     fn to_bytes(
         &self,
         config: Option<&mut SerializerConfig<T>>,
-    ) -> Result<Vec<u8>, SerializationError> {
+    ) -> Result<Vec<u8>, E> {
         let mut buffer = Vec::new();
         let mut stream = BitStreamWriter::new(&mut buffer);
         self.write_bytes(&mut stream, config)?;
@@ -49,16 +49,16 @@ pub trait BinarySerializer<T: Clone = ()> {
     }
 }
 
-pub trait BinaryDeserializer<T: Clone = ()>: Sized {
+pub trait BinaryDeserializer<T: Clone = (), E = DeserializationError>: Sized {
     fn read_bytes(
         stream: &mut BitStreamReader,
         config: Option<&mut SerializerConfig<T>>,
-    ) -> Result<Self, DeserializationError>;
+    ) -> Result<Self, E>;
 
     fn from_bytes(
         bytes: &[u8],
         config: Option<&mut SerializerConfig<T>>,
-    ) -> Result<Self, DeserializationError> {
+    ) -> Result<Self, E> {
         let mut stream = BitStreamReader::new(bytes);
         Self::read_bytes(&mut stream, config)
     }

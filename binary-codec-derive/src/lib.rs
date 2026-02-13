@@ -23,6 +23,9 @@ use syn::{
         variant_by,
         multi_enum,
         no_discriminator,
+        codec_error,
+        codec_ser_error,
+        codec_de_error,
     )
 )]
 pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -45,7 +48,10 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
         variant_for,
         variant_by,
         multi_enum,
-        no_discriminator
+        no_discriminator,
+        codec_error,
+        codec_ser_error,
+        codec_de_error,
     )
 )]
 pub fn generate_code_from_bytes(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -261,13 +267,13 @@ fn generate_struct_serializer(
         )
     });
 
-    let error_type = generate_error_type(read);
+    let error_type = generate_error_type(read, &ast.attrs);
     let serializer_code = if read {
         let vars = fields.iter().map(|f| f.ident.as_ref().unwrap());
 
         // read bytes code
         quote! {
-            impl<T : Clone> binary_codec::BinaryDeserializer<T> for #struct_name {
+            impl<T : Clone> binary_codec::BinaryDeserializer<T, #error_type> for #struct_name {
                 fn read_bytes(
                     stream: &mut binary_codec::BitStreamReader,
                     config: Option<&mut binary_codec::SerializerConfig<T>>,
@@ -287,7 +293,7 @@ fn generate_struct_serializer(
     } else {
         // write bytes code
         quote! {
-            impl<T : Clone> binary_codec::BinarySerializer<T> for #struct_name {
+            impl<T : Clone> binary_codec::BinarySerializer<T, #error_type> for #struct_name {
                 fn write_bytes(
                     &self,
                     stream: &mut binary_codec::BitStreamWriter,
@@ -313,7 +319,7 @@ fn generate_enum_serializer(
     data_enum: &syn::DataEnum,
 ) -> proc_macro::TokenStream {
     let enum_name = &ast.ident;
-    let error_type = generate_error_type(read);
+    let error_type = generate_error_type(read, &ast.attrs);
 
     let mut no_disc_prefix = false;
 
@@ -483,7 +489,7 @@ fn generate_enum_serializer(
                 }
             }
 
-            impl<T : Clone> binary_codec::BinaryDeserializer<T> for #enum_name {
+            impl<T : Clone> binary_codec::BinaryDeserializer<T, #error_type> for #enum_name {
                 fn read_bytes(
                     stream: &mut binary_codec::BitStreamReader,
                     config: Option<&mut binary_codec::SerializerConfig<T>>,
@@ -500,7 +506,7 @@ fn generate_enum_serializer(
 
                     match _p_disc {
                         #(#serialization_variants,)*
-                        _ => Err(#error_type::UnknownDiscriminant(_p_disc)),
+                        _ => Err(binary_codec::DeserializationError::UnknownDiscriminant(_p_disc).into()),
                     }
                 }
             }
@@ -508,7 +514,7 @@ fn generate_enum_serializer(
         .into()
     } else {
         quote! {
-            impl<T : Clone> binary_codec::BinarySerializer<T> for #enum_name {
+            impl<T : Clone> binary_codec::BinarySerializer<T, #error_type> for #enum_name {
                 fn write_bytes(
                     &self,
                     stream: &mut binary_codec::BitStreamWriter,
@@ -1201,12 +1207,41 @@ fn generate_code_for_handling_field(
     }
 }
 
-fn generate_error_type(read: bool) -> proc_macro2::TokenStream {
+fn generate_error_type(read: bool, attrs: &[Attribute]) -> proc_macro2::TokenStream {
+    if let Some(custom) = get_custom_error_type(read, attrs) {
+        return custom;
+    }
+
     if read {
         quote! { binary_codec::DeserializationError }
     } else {
         quote! { binary_codec::SerializationError }
     }
+}
+
+fn get_custom_error_type(read: bool, attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
+    let specific = if read { "codec_de_error" } else { "codec_ser_error" };
+
+    let specific_value = attrs
+        .iter()
+        .find(|attr| attr.path().is_ident(specific))
+        .and_then(get_string_value_from_attribute);
+
+    if let Some(value) = specific_value {
+        return Some(parse_error_type(&value));
+    }
+
+    let common_value = attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("codec_error"))
+        .and_then(get_string_value_from_attribute);
+
+    common_value.map(|value| parse_error_type(&value))
+}
+
+fn parse_error_type(value: &str) -> proc_macro2::TokenStream {
+    let ty: Type = syn::parse_str(value).expect("Invalid error type for codec_error");
+    quote! { #ty }
 }
 
 fn generate_size_key(
