@@ -50,14 +50,16 @@ impl<'a> BitStreamWriter<'a> {
 
     /// Set crypto stream
     pub fn set_crypto(&mut self, mut crypto: Option<Box<dyn CryptoStream>>) {
-        if let Some(existing) = self.crypto.as_ref()
-            && let Some(new_crypto) = crypto.as_mut()
-        {
-            new_crypto.replace(existing);
-            self.crypto = crypto;
-        } else {
-            self.crypto = crypto;
+        if let Some(new) = crypto.as_mut() {
+            if let Some(existing) = self.crypto.as_ref() {
+                new.replace(existing);
+            } else {
+                // Initialize new crypto stream with the data written so far, so that it can cache full plaintext
+                new.set_cached(self.slice());
+            }
         }
+
+        self.crypto = crypto;
     }
 
      /// Remove crypto stream
@@ -236,6 +238,10 @@ mod tests {
         
         fn replace(&mut self, other: &Box<dyn CryptoStream>) {
             self.ciphertext = other.get_cached(true).to_vec();
+        }
+        
+        fn set_cached(&mut self, data: &[u8]) {
+            self.ciphertext = data.to_vec();
         }
     }
 

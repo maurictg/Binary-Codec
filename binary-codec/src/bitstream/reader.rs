@@ -70,16 +70,23 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
+    /// Return slice from start of buffer to current byte position
+    pub fn slice_start(&self) -> &[u8] {
+        &self.buffer[0..self.byte_pos()]
+    }
+
     /// Set crypto stream
     pub fn set_crypto(&mut self, mut crypto: Option<Box<dyn CryptoStream>>) {
-        if let Some(existing) = self.crypto.as_ref()
-            && let Some(new_crypto) = crypto.as_mut()
-        {
-            new_crypto.replace(existing);
-            self.crypto = crypto;
-        } else {
-            self.crypto = crypto;
+        if let Some(new) = crypto.as_mut() {
+            if let Some(existing) = self.crypto.as_ref() {
+                new.replace(existing);
+            } else {
+                // Initialize new crypto stream with the data read so far, so that it can cache full plaintext
+                new.set_cached(self.slice_start());
+            }
         }
+
+        self.crypto = crypto;
     }
 
     /// Remove crypto stream
@@ -287,6 +294,10 @@ mod tests {
 
         fn replace(&mut self, other: &Box<dyn CryptoStream>) {
             self.plain = other.get_cached(true).to_vec();
+        }
+        
+        fn set_cached(&mut self, data: &[u8]) {
+            self.plain = data.to_vec();
         }
     }
 

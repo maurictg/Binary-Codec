@@ -15,6 +15,9 @@ pub trait CryptoStream {
 
     /// Extend the internal state of this crypto stream with another's.
     fn replace(&mut self, other: &Box<dyn CryptoStream>);
+
+    /// Set internal cache for this crypto stream
+    fn set_cached(&mut self, data: &[u8]);
 }
 
 #[cfg(test)]
