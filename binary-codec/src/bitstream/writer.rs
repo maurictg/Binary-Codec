@@ -42,7 +42,7 @@ impl<'a> BitStreamWriter<'a> {
         let end = to.unwrap_or(self.byte_pos());
 
         if let Some(crypto) = self.crypto.as_ref() {
-            return &crypto.get_plaintext()[start..end];
+            return &crypto.get_cached(true)[start..end];
         }
 
         &self.buffer[start..end]
@@ -218,7 +218,7 @@ mod tests {
             &self.ciphertext[self.ciphertext.len() - slice.len()..]
         }
 
-        fn get_plaintext(&self) -> &[u8] {
+        fn get_cached(&self, original: bool) -> &[u8] {
             &[]
         }
     }

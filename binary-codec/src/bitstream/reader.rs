@@ -51,7 +51,7 @@ impl<'a> BitStreamReader<'a> {
         let end = to.unwrap_or(self.byte_pos());
 
         if let Some(crypto) = self.crypto.as_ref() {
-            return &crypto.get_plaintext()[start..end];
+            return &crypto.get_cached(false)[start..end];
         }
 
         &self.buffer[start..end]
@@ -269,7 +269,7 @@ mod tests {
             &self.plain[self.plain.len() - slice.len()..]
         }
 
-        fn get_plaintext(&self) -> &[u8] {
+        fn get_cached(&self, original: bool) -> &[u8] {
             &self.plain
         }
     }

@@ -7,8 +7,9 @@ pub trait CryptoStream {
     fn apply_keystream_byte(&mut self, b: u8) -> u8;
     /// Applies the keystream to the given slice and returns the result.
     fn apply_keystream(&mut self, slice: &[u8]) -> &[u8];
-    /// Get the underlying plaintext buffer
-    fn get_plaintext(&self) -> &[u8];
+    /// Get the underlying original/encrypted buffer
+    /// `original` indicates whether to return the original (unencrypted) buffer or the encrypted buffer.
+    fn get_cached(&self, original: bool) -> &[u8];
 }
 
 #[cfg(test)]
