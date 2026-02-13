@@ -1,9 +1,14 @@
 pub mod reader;
 pub mod writer;
 
+/// Crypto Stream
 pub trait CryptoStream {
+    /// Applies the keystream byte to the given byte and returns the result.
     fn apply_keystream_byte(&mut self, b: u8) -> u8;
+    /// Applies the keystream to the given slice and returns the result.
     fn apply_keystream(&mut self, slice: &[u8]) -> &[u8];
+    /// Get the underlying plaintext buffer
+    fn get_plaintext(&self) -> &[u8];
 }
 
 #[cfg(test)]

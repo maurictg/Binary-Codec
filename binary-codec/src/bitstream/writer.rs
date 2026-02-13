@@ -36,8 +36,16 @@ impl<'a> BitStreamWriter<'a> {
     }
 
     /// Return slice from marker (or start if marker is unset) to specific position or current byte
+    /// If crypto is set, it will return the unencrypted (cached) slice. This is different from other `slice` methods which always returns the raw buffer slice.
     pub fn slice_marker(&self, to: Option<usize>) -> &[u8] {
-        &self.buffer[self.marker.unwrap_or(0)..to.unwrap_or(self.byte_pos())]
+        let start = self.marker.unwrap_or(0);
+        let end = to.unwrap_or(self.byte_pos());
+
+        if let Some(crypto) = self.crypto.as_ref() {
+            return &crypto.get_plaintext()[start..end];
+        }
+
+        &self.buffer[start..end]
     }
 
     /// Set crypto stream
@@ -208,6 +216,10 @@ mod tests {
             let d = slice.iter().map(|s|s + 1);
             self.ciphertext.extend(d);
             &self.ciphertext[self.ciphertext.len() - slice.len()..]
+        }
+
+        fn get_plaintext(&self) -> &[u8] {
+            &[]
         }
     }
 

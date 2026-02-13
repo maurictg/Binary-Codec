@@ -8,7 +8,7 @@ pub struct BitStreamReader<'a> {
     last_read_byte: Option<u8>,
     offset_end: usize,
     crypto: Option<Box<dyn CryptoStream>>,
-    marker: Option<usize>
+    marker: Option<usize>,
 }
 
 impl<'a> BitStreamReader<'a> {
@@ -45,8 +45,16 @@ impl<'a> BitStreamReader<'a> {
     }
 
     /// Return slice from marker (or start if marker is unset) to specific position or current byte
+    /// If crypto is set, it will return the decrypted slice. This is different from other `slice` methods which always returns the raw buffer slice.
     pub fn slice_marker(&self, to: Option<usize>) -> &[u8] {
-        &self.buffer[self.marker.unwrap_or(0)..to.unwrap_or(self.byte_pos())]
+        let start = self.marker.unwrap_or(0);
+        let end = to.unwrap_or(self.byte_pos());
+
+        if let Some(crypto) = self.crypto.as_ref() {
+            return &crypto.get_plaintext()[start..end];
+        }
+
+        &self.buffer[start..end]
     }
 
     /// Return slice from offset-end to end of buffer
@@ -251,6 +259,10 @@ mod tests {
             let d = slice.iter().map(|s| s + 1);
             self.plain.extend(d);
             &self.plain[self.plain.len() - slice.len()..]
+        }
+
+        fn get_plaintext(&self) -> &[u8] {
+            &self.plain
         }
     }
 
