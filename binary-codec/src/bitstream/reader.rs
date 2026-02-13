@@ -58,8 +58,16 @@ impl<'a> BitStreamReader<'a> {
     }
 
     /// Return slice from offset-end to end of buffer
-    pub fn slice_end(&self) -> &[u8] {
-        &self.buffer[self.buffer.len() - self.offset_end..]
+    /// If crypto is set, it will apply the keystream to the slice before returning.
+    /// This is different from other `slice` methods which always returns the raw buffer slice.
+    pub fn slice_end(&mut self) -> &[u8] {
+        let slice = &self.buffer[self.buffer.len() - self.offset_end..];
+
+        if let Some(crypto) = self.crypto.as_mut() {
+            crypto.apply_keystream(slice)
+        } else {
+            slice
+        }
     }
 
     /// Set crypto stream
