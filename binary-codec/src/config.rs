@@ -53,7 +53,14 @@ impl<T: Clone> SerializerConfig<T> {
             .entry(format!("{}.{}", field, enum_name))
             .or_insert(discs);
 
-        entry.pop()
+        let res = entry.pop();
+
+        // Cleanup empty entries to prevent issues with multiple calls to get_next_multi_disc for the same field and enum_name
+        if entry.is_empty() {
+            self.multi_disc_list.remove(&format!("{}.{}", field, enum_name));
+        }
+
+        res
     }
 
     fn get_toggled_multi_discs(&self, enum_name: &str) -> Vec<u8> {
