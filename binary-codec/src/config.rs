@@ -122,5 +122,10 @@ impl<T: Clone> SerializerConfig<T> {
 
     pub fn reset(&mut self) {
         self.discriminator = None;
+        self.toggle_keys.clear();
+        self.length_keys.clear();
+        self.variant_keys.clear();
+        self.multi_disc_config.clear();
+        self.multi_disc_list.clear();
     }
 }
