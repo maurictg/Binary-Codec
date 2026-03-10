@@ -196,7 +196,7 @@ impl<'a> BitStreamReader<'a> {
         let start = self.byte_pos();
         if start + count > self.buffer.len() - self.offset_end {
             return Err(DeserializationError::NotEnoughBytes(
-                start + count - self.buffer.len(),
+                (start + count - self.buffer.len()) as u64,
             ));
         }
 

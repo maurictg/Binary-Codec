@@ -35,7 +35,7 @@ pub fn write_size<T: Clone, E: From<SerializationError>>(
 
         if let Some(expected) = config.get_length(size_key) {
             if expected != size {
-                return Err(SerializationError::UnexpectedLength(expected, size).into());
+                return Err(SerializationError::UnexpectedLength(expected as u64, size as u64).into());
             }
         }
     }
