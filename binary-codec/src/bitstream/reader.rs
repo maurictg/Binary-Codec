@@ -546,4 +546,13 @@ mod tests {
         reader.read_bytes(2).unwrap(); // Read 20, 30
         assert_eq!(reader.slice_marker(None), &[20, 30]);
     }
+
+    #[test]
+    fn test_can_read_dynint_0() {
+        let buf = vec![0, 1];
+        let mut stream = BitStreamReader::new(&buf);
+
+        assert_eq!(stream.read_dyn_int(), Ok(0));
+        assert_eq!(stream.read_byte(), Ok(1));
+    }
 }

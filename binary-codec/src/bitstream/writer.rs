@@ -162,6 +162,11 @@ impl<'a> BitStreamWriter<'a> {
     /// Write a dynamic int, starting at the next byte bounary
     /// The last bit is used as a continuation flag for the next byte
     pub fn write_dyn_int(&mut self, mut val: u128) {
+        if val == 0 {
+            self.write_byte(0);
+            return;
+        }
+        
         while val > 0 {
             let mut encoded = val % 128;
             val /= 128;
@@ -430,5 +435,14 @@ mod tests {
 
         stream.set_marker(None);
         assert_eq!(stream.slice_marker(None), &[]);
+    }
+
+    #[test]
+    fn test_write_0_dynint() {
+        let mut buf = Vec::new();
+        let mut stream = BitStreamWriter::new(&mut buf);
+
+        stream.write_dyn_int(0);
+        assert_eq!(1, stream.len());
     }
 }
