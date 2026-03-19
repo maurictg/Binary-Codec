@@ -151,6 +151,22 @@ struct ToggledByVariant {
     uneven: Option<u16>
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+#[discriminator_bits = 4]
+enum TestEnum {
+    A,
+    B,
+    C,
+}
+
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct TestDiscriminatorBits {
+    a: bool,
+    b: bool,
+    // spill 2 bits
+    num: TestEnum,
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -158,6 +174,20 @@ mod tests {
     use binary_codec::{BinaryDeserializer, BinarySerializer, SerializerConfig};
 
     use super::*;
+
+    #[test]
+    fn test_discriminator_bits() {
+        let t = TestDiscriminatorBits {
+            a: true,
+            b: false,
+            num: TestEnum::C,
+        };
+
+        let bytes = BinarySerializer::<()>::to_bytes(&t, None).unwrap();
+        assert_eq!(bytes.len(), 1);
+        let deserialized = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
+        assert_eq!(t, deserialized);
+    }
 
     #[test]
     fn test_toggled_by_variant() {

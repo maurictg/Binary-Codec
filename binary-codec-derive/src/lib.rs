@@ -23,6 +23,7 @@ use syn::{
         variant_by,
         multi_enum,
         no_discriminator,
+        discriminator_bits,
         codec_error,
         codec_ser_error,
         codec_de_error,
@@ -49,6 +50,7 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
         variant_by,
         multi_enum,
         no_discriminator,
+        discriminator_bits,
         codec_error,
         codec_ser_error,
         codec_de_error,
@@ -68,7 +70,7 @@ fn generate_code_binary_serializer(
     match ast.data {
         Data::Struct(ref data) => generate_struct_serializer(read, &ast, data),
         Data::Enum(ref data) => generate_enum_serializer(read, &ast, data),
-        _ => panic!("ToBytes can only be used on structs"),
+        _ => panic!("ToBytes can only be used on structs or enums"),
     }
 }
 
@@ -322,12 +324,27 @@ fn generate_enum_serializer(
     let error_type = generate_error_type(read, &ast.attrs);
 
     let mut no_disc_prefix = false;
+    let mut disc_bits = None;
 
     // Search attributes for variant_by declarations
     for attr in ast.attrs.iter() {
         // #[no_disc_prefix] attribute
         if attr.path().is_ident("no_discriminator") {
             no_disc_prefix = true;
+        }
+
+        if attr.path().is_ident("discriminator_bits") {
+            disc_bits = get_int_value_from_attribute(attr).map(|b| b as u8);
+        }
+    }
+
+    if let Some(bits) = disc_bits {
+        if no_disc_prefix {
+            panic!("Cannot use discriminator_bits and no_discriminator together");
+        }
+
+        if bits < 1 || bits > 8 {
+            panic!("discriminator_bits should be between 1 and 8");
         }
     }
 
@@ -407,9 +424,19 @@ fn generate_enum_serializer(
         let write_disc = if no_disc_prefix {
             quote! {}
         } else {
+            let disc_writer = if let Some(bits) = disc_bits {
+                quote! {
+                    _p_stream.write_small(_p_disc, #bits);
+                }
+            } else {
+                quote! {
+                    _p_stream.write_fixed_int(_p_disc);
+                }
+            };
+
             quote! {
                 let _p_disc: u8 = #disc_value;
-                _p_stream.write_fixed_int(_p_disc);
+                #disc_writer
             }
         };
 
@@ -481,6 +508,16 @@ fn generate_enum_serializer(
     });
 
     if read {
+        let disc_reader = if let Some(bits) = disc_bits {
+            quote! {
+                _p_stream.read_small(#bits)?
+            }
+        } else {
+            quote! {
+                 _p_stream.read_fixed_int()?
+            }
+        };
+
         quote! {
             impl #enum_name {
                 pub fn configure_multi_disc<T : Clone>(config: &mut binary_codec::SerializerConfig<T>) {
@@ -501,7 +538,7 @@ fn generate_enum_serializer(
                     let _p_disc = if let Some(disc) = _p_config.discriminator.take() {
                         disc
                     } else {
-                        _p_stream.read_fixed_int()?
+                        #disc_reader
                     };
 
                     match _p_disc {
@@ -1220,7 +1257,11 @@ fn generate_error_type(read: bool, attrs: &[Attribute]) -> proc_macro2::TokenStr
 }
 
 fn get_custom_error_type(read: bool, attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
-    let specific = if read { "codec_de_error" } else { "codec_ser_error" };
+    let specific = if read {
+        "codec_de_error"
+    } else {
+        "codec_ser_error"
+    };
 
     let specific_value = attrs
         .iter()
