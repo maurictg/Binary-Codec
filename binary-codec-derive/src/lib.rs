@@ -10,6 +10,7 @@ use syn::{
     ToBytes,
     attributes(
         bits,
+        skip_bits,
         dyn_int,
         dyn_length,
         key_dyn_length,
@@ -37,6 +38,7 @@ pub fn generate_code_to_bytes(input: proc_macro::TokenStream) -> proc_macro::Tok
     FromBytes,
     attributes(
         bits,
+        skip_bits,
         dyn_int,
         key_dyn_length,
         val_dyn_length,
@@ -102,6 +104,7 @@ fn generate_field_serializer(
     let mut is_dynamic_int = false;
     let mut has_dynamic_length = false;
     let mut bits_count = None;
+    let mut skip_bits = None;
     let mut key_dyn_length = false;
     let mut val_dyn_length = false;
     let mut multi_enum = false;
@@ -133,6 +136,7 @@ fn generate_field_serializer(
             Some("variant_by") => variant_by = get_string_value_from_attribute(attr),
             Some("length_by") => length_by = get_string_value_from_attribute(attr),
             Some("bits") => bits_count = get_int_value_from_attribute(attr).map(|b| b as u8),
+            Some("skip_bits") => skip_bits = get_int_value_from_attribute(attr).map(|b| b as u8),
             _ => {} // None => continue
         }
     }
@@ -222,6 +226,20 @@ fn generate_field_serializer(
         quote! {}
     };
 
+    let skip_bits_code = if let Some(skip) = skip_bits && skip > 0 {
+        if read {
+            quote! {
+                let _ = _p_stream.read_small(#skip)?;
+            }
+        } else {
+            quote! {
+                _p_stream.write_small(0, #skip);
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let handle_field = generate_code_for_handling_field(
         read,
         field_type,
@@ -242,6 +260,7 @@ fn generate_field_serializer(
 
     quote! {
         #before
+        #skip_bits_code
         #handle_field
         #after
     }
