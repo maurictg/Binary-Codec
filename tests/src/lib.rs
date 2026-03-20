@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, net::{SocketAddrV4, SocketAddrV6}};
 
 use binary_codec_derive::{FromBytes, ToBytes};
 // mod out;
@@ -167,9 +167,16 @@ struct TestDiscriminatorBits {
     num: TestEnum,
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct TestIpAddresses {
+    v4: SocketAddrV4,
+    v6: SocketAddrV6,
+}
+
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, net::{Ipv4Addr, Ipv6Addr}};
 
     use binary_codec::{BinaryDeserializer, BinarySerializer, SerializerConfig};
 
@@ -357,5 +364,20 @@ mod tests {
         let o2 = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
 
         assert_eq!(o, o2);
+    }
+
+    #[test]
+    fn can_serialize_ip_addresses() {
+        let obj = TestIpAddresses {
+            v4: SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080),
+            v6: SocketAddrV6::new(Ipv6Addr::LOCALHOST, 8080, 0, 0),
+        };
+
+        let bytes = BinarySerializer::<()>::to_bytes(&obj, None).unwrap();
+        println!("{:?} [{}]", bytes, bytes.len());
+        assert_eq!(bytes.len(), 24); // 4 bytes for IPv4, 16 bytes for IPv6, 2 bytes for ports
+
+        let deserialized = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
+        assert_eq!(obj, deserialized);
     }
 }

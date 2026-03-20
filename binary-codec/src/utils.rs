@@ -1,3 +1,5 @@
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+
 use crate::{
     BinaryDeserializer, BinarySerializer, BitStreamReader, BitStreamWriter, DeserializationError,
     SerializationError, SerializerConfig,
@@ -10,7 +12,10 @@ pub fn get_read_size<'a, T: Clone, E: From<DeserializationError>>(
 ) -> Result<usize, E> {
     let size = if let Some(size_key) = size_key {
         if size_key == "__dynamic" {
-            return stream.read_dyn_int().map(|v| v as usize).map_err(Into::into);
+            return stream
+                .read_dyn_int()
+                .map(|v| v as usize)
+                .map_err(Into::into);
         }
 
         config.get_length(size_key).unwrap_or(stream.bytes_left())
@@ -35,7 +40,9 @@ pub fn write_size<T: Clone, E: From<SerializationError>>(
 
         if let Some(expected) = config.get_length(size_key) {
             if expected != size {
-                return Err(SerializationError::UnexpectedLength(expected as u64, size as u64).into());
+                return Err(
+                    SerializationError::UnexpectedLength(expected as u64, size as u64).into(),
+                );
             }
         }
     }
@@ -114,4 +121,32 @@ where
     } else {
         value.write_bytes(stream, Some(config))
     }
+}
+
+pub fn read_socketaddr_v4(
+    stream: &mut BitStreamReader,
+) -> Result<std::net::SocketAddrV4, DeserializationError> {
+    let octets: [u8; 4] = stream.read_bytes(4)?.try_into().unwrap();
+    let port = stream.read_fixed_int()?;
+    let ip = Ipv4Addr::from_octets(octets);
+    Ok(SocketAddrV4::new(ip, port))
+}
+
+pub fn write_socketaddr_v4(value: &std::net::SocketAddrV4, stream: &mut BitStreamWriter) {
+    stream.write_bytes(&value.ip().octets());
+    stream.write_fixed_int(value.port());
+}
+
+pub fn read_socketaddr_v6(
+    stream: &mut BitStreamReader,
+) -> Result<std::net::SocketAddrV6, DeserializationError> {
+    let octets: [u8; 16] = stream.read_bytes(16)?.try_into().unwrap();
+    let port = stream.read_fixed_int()?;
+    let ip = Ipv6Addr::from_octets(octets);
+    Ok(SocketAddrV6::new(ip, port, 0, 0))
+}
+
+pub fn write_socketaddr_v6(value: &std::net::SocketAddrV6, stream: &mut BitStreamWriter) {
+    stream.write_bytes(&value.ip().octets());
+    stream.write_fixed_int(value.port());
 }

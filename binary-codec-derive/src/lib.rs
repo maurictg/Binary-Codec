@@ -749,6 +749,28 @@ fn generate_code_for_handling_field(
                         }
                     }
                 }
+                "SocketAddrV4" => {
+                    if read {
+                        quote! {
+                            let _p_val = binary_codec::utils::read_socketaddr_v4(_p_stream)?;
+                        }
+                    } else {
+                        quote! {
+                            binary_codec::utils::write_socketaddr_v4(_p_val, _p_stream);
+                        }
+                    }
+                }
+                "SocketAddrV6" => {
+                    if read {
+                        quote! {
+                            let _p_val = binary_codec::utils::read_socketaddr_v6(_p_stream)?;
+                        }
+                    } else {
+                        quote! {
+                            binary_codec::utils::write_socketaddr_v6(_p_val, _p_stream);
+                        }
+                    }
+                }
                 _ => {
                     let size_key = generate_size_key(length_by, has_dynamic_length).1;
 
