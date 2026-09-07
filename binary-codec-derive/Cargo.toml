@@ -1,6 +1,6 @@
 [package]
 name = "binary-codec-derive"
-version = "0.6.7"
+version = "0.6.8"
 edition = "2024"
 license = "MIT"
 homepage = "https://github.com/maurictg/Binary-Codec"
@@ -17,4 +17,4 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = "2"
+syn = "3"

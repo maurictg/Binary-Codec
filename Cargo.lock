@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "binary-codec"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
- "binary-codec-derive 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)",
+ "binary-codec-derive 0.6.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "binary-codec-derive"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -20,9 +20,9 @@ dependencies = [
 
 [[package]]
 name = "binary-codec-derive"
-version = "0.6.7"
+version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a71138ca0654a33ee2dac94b00b4fd9cc9b20536b5904045344c1853dc7b97"
+checksum = "568bd0a90e790e4a673dff42ae752258ffb47b591db763f17ec9e05e6555d484"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -49,9 +49,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.106"
+version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ede7c438028d4436d71104916910f5bb611972c5cfd7f89b8300a8186e6fada6"
+checksum = "12df2e0110f65b775f769bb17ef989067a1d931b2eb822bd4346631eeada89f9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -63,7 +63,7 @@ name = "tests"
 version = "0.1.0"
 dependencies = [
  "binary-codec",
- "binary-codec-derive 0.6.7",
+ "binary-codec-derive 0.6.8",
 ]
 
 [[package]]

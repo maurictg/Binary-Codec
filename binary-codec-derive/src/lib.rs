@@ -815,8 +815,40 @@ fn generate_code_for_handling_field(
                 let ident_name = ident.to_string();
 
                 match ident_name.as_ref() {
+                    "Box" => {
+                        let inner_type = get_inner_type(path).expect("Box missing inner type");
+                        let handle = generate_code_for_handling_field(
+                            read,
+                            inner_type,
+                            field_name,
+                            bits_count,
+                            toggled_by,
+                            toggled_by_variant,
+                            variant_by,
+                            length_by,
+                            is_dynamic_int,
+                            has_dynamic_length,
+                            key_dyn_length,
+                            val_dyn_length,
+                            multi_enum,
+                            direct_collection_child,
+                            level + 1,
+                        );
+
+                        if read {
+                            quote! {
+                                #handle
+                                let _p_val = Box::new(_p_val);
+                            }
+                        } else {
+                            quote! {
+                                let _p_val = _p_val.as_ref();
+                                #handle
+                            }
+                        }
+                    }
                     "RefCell" => {
-                        let inner_type = get_inner_type(path).expect("Option missing inner type");
+                        let inner_type = get_inner_type(path).expect("RefCell missing inner type");
                         let handle = generate_code_for_handling_field(
                             read,
                             inner_type,

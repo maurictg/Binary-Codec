@@ -173,6 +173,28 @@ struct TestIpAddresses {
     v6: SocketAddrV6,
 }
 
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+struct BoxedValues {
+    #[bits = 3]
+    small: Box<u8>,
+
+    nested: Box<Nested>,
+
+    #[dyn_length]
+    bytes: Box<Vec<u8>>,
+
+    #[toggles("boxed-value")]
+    has_value: bool,
+
+    #[toggled_by("boxed-value")]
+    optional: Box<Option<u16>>,
+}
+
+#[derive(ToBytes, FromBytes, Debug, PartialEq)]
+enum BoxedList {
+    End,
+    Item(u8, Box<BoxedList>),
+}
 
 #[cfg(test)]
 mod tests {
@@ -379,5 +401,34 @@ mod tests {
 
         let deserialized = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
         assert_eq!(obj, deserialized);
+    }
+
+    #[test]
+    fn can_serialize_boxed_values() {
+        let value = BoxedValues {
+            small: Box::new(5),
+            nested: Box::new(Nested::D { x: 42 }),
+            bytes: Box::new(vec![1, 2, 3, 4]),
+            has_value: true,
+            optional: Box::new(Some(1024)),
+        };
+
+        let bytes = BinarySerializer::<()>::to_bytes(&value, None).unwrap();
+        let deserialized = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
+
+        assert_eq!(value, deserialized);
+    }
+
+    #[test]
+    fn can_serialize_recursive_boxed_values() {
+        let value = BoxedList::Item(
+            1,
+            Box::new(BoxedList::Item(2, Box::new(BoxedList::End))),
+        );
+
+        let bytes = BinarySerializer::<()>::to_bytes(&value, None).unwrap();
+        let deserialized = BinaryDeserializer::<()>::from_bytes(&bytes, None).unwrap();
+
+        assert_eq!(value, deserialized);
     }
 }
